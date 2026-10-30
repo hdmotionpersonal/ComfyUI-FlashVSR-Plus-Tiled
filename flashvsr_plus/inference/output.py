@@ -128,8 +128,8 @@ class IncrementalVideoWriter:
         }
 
 
-class FloatSegmentSpool:
-    """Store decoder segments losslessly on disk for bounded tiled-video merge."""
+class Float16SegmentSpool:
+    """Store compact float16 decoder segments for bounded tiled-video merge."""
 
     def __init__(self, directory):
         self.directory = Path(directory)
@@ -143,7 +143,7 @@ class FloatSegmentSpool:
         if video.ndim != 5 or video.shape[0] != 1:
             raise ValueError("Expected one segment [1,C,F,H,W]")
         path = self.directory / f"segment_{len(self.segments):06d}.npy"
-        value = video[0].detach().to(device="cpu", dtype=torch.float32).contiguous().numpy()
+        value = video[0].detach().to(device="cpu", dtype=torch.float16).contiguous().numpy()
         np.save(path, value, allow_pickle=False)
         self.segments.append({"path": str(path), "frames": int(value.shape[1]),
                               "bytes": int(path.stat().st_size)})

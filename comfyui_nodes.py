@@ -17,7 +17,7 @@ import comfy.utils
 
 from .flashvsr_plus.comfy_runtime import ModelHandle, Options, geometry, upscale_images
 from .flashvsr_plus.inference import InferenceRequest
-from .flashvsr_plus.inference.output import FloatSegmentSpool, IncrementalVideoWriter, mux_source_audio
+from .flashvsr_plus.inference.output import Float16SegmentSpool, IncrementalVideoWriter, mux_source_audio
 from .flashvsr_plus.inference.tiling import plan_tiles, stitch_tiles
 from .flashvsr_plus.weights import ROOT, FILES
 
@@ -204,7 +204,7 @@ class FlashVSRPlusUpscaleVideo:
                         for index, tile in enumerate(tiles):
                             mm.throw_exception_if_processing_interrupted()
                             progress(f"Spatial video tile {index + 1}/{len(tiles)}")
-                            spool = FloatSegmentSpool(Path(temporary)/f"tile_{index:04d}")
+                            spool = Float16SegmentSpool(Path(temporary)/f"tile_{index:04d}")
                             request = InferenceRequest(input_path=source, height=ch, width=cw,
                                 content_height=height, content_width=width,
                                 max_frames=max_frames or None, fps=fps,
@@ -228,7 +228,7 @@ class FlashVSRPlusUpscaleVideo:
                         for segment_index in range(segment_count):
                             mm.throw_exception_if_processing_interrupted()
                             predictions = [torch.from_numpy(np.load(
-                                spool["segments"][segment_index]["path"], allow_pickle=False))
+                                spool["segments"][segment_index]["path"], allow_pickle=False).astype(np.float32))
                                 for spool in spools]
                             frame_counts = {value.shape[1] for value in predictions}
                             if len(frame_counts) != 1:
