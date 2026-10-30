@@ -34,6 +34,8 @@ The dependency list does not include PyTorch or Transformers and will not replac
 
 Connect **FlashVSR+ Tiled Options** to either tiled upscale node and enable `spatial_tiling`. The tile size and overlap are measured in output-canvas pixels. Tile dimensions must be multiples of 128; overlap can be set in 8-pixel steps. The canvas is padded to fit complete tiles and cropped back to the requested output dimensions.
 
+Spatial tile size, overlap, and blend controls are visibly disabled while `spatial_tiling` is off; their values are preserved when toggling the option.
+
 Choose one of three overlap blend methods:
 
 - `cosine` — smooth cosine feathering across shared edges; recommended starting point.
