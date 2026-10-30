@@ -77,8 +77,14 @@ def blend_weights(tile: Tile, canvas_height: int, canvas_width: int, tiles: tupl
         t = torch.arange(1, overlap_extent + 1, dtype=dtype, device=device) / overlap_extent
         ramp = t if method == "linear" else 0.5 - 0.5 * torch.cos(math.pi * t)
         if side == "fall": ramp = ramp.flip(0)
-        if axis == 0: weight[:overlap_extent] *= ramp if side == "rise" else torch.ones_like(ramp); weight[-overlap_extent:] *= ramp if side == "fall" else torch.ones_like(ramp)
-        else: weight[:, :overlap_extent] *= ramp if side == "rise" else torch.ones_like(ramp); weight[:, -overlap_extent:] *= ramp if side == "fall" else torch.ones_like(ramp)
+        if axis == 0 and side == "rise":
+            weight[:overlap_extent, :] *= ramp[:, None]
+        elif axis == 0:
+            weight[-overlap_extent:, :] *= ramp[:, None]
+        elif side == "rise":
+            weight[:, :overlap_extent] *= ramp[None, :]
+        else:
+            weight[:, -overlap_extent:] *= ramp[None, :]
     return weight.clamp_min_(1e-6)
 
 

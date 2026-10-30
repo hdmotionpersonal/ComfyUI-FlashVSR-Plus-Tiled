@@ -24,6 +24,12 @@
 - одинаковый seed создаёт общее глобальное latent-шумовое окно для каждого временного блока; тайл берёт crop по координатам canvas.
 - Выход модели всё ещё может отличаться из-за ограниченного контекста внимания внутри каждого тайла.
 - Color correction в VIDEO выполняется для каждого тайла отдельно; если заметен цветовой стык, отключите её.
+
+## GPU smoke check
+
+Локальный прогон на RTX 4070 Ti SUPER: V1 INT8 + Tiny + SDPA, `demo1.mp4` (400×224, 33 кадра, 24 FPS), целевой размер 1600×896. VIDEO и IMAGE прошли с 8 тайлами 512 px и overlap 128 px; VIDEO сохранил 33 кадра, 24 FPS и AAC audio. Float32 spool этого короткого ролика занял около 830 MB. Все три blend режима точно сохраняют константное поле в CPU-проверке.
+
+Native BSA в этой ComfyUI-среде не установлен. Triton backend импортировался, но Windows JIT-драйвер не собрал вспомогательный модуль. На этом GPU smoke check использовался SDPA; большие SDPA tiles могут не пройти memory preflight, уменьшите tile size.
 - Tile-inference пока не проверялся на GPU и не считается готовым к выпуску. Перед использованием проверьте рабочую копию на копии workflow.
 
 PRD: [PRD_SPATIAL_TILING_RU.md](PRD_SPATIAL_TILING_RU.md). Исходная сравнительная реализация — [ComfyUI-FlashVSR от 1038lab](https://github.com/1038lab/ComfyUI-FlashVSR).

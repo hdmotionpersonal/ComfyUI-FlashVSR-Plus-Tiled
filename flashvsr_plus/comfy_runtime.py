@@ -321,7 +321,7 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
                                 "overlap": options.spatial_overlap,
                                 "blend": options.spatial_blend,
                                 "gaussian_sigma": options.spatial_gaussian_sigma,
-                                "noise_policy": "same seed per tile; spatially aligned noise not guaranteed"})
+                                "noise_policy": "global latent coordinates"})
     output = stitched[:, :, :height, :width].permute(1, 2, 3, 0).to(
         dtype=torch.float32, copy=True, memory_format=torch.contiguous_format).add_(1).div_(2).clamp_(0, 1)
     result.metadata.update({"width": width, "height": height, "canvas_width": cw, "canvas_height": ch})
