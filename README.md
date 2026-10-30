@@ -13,8 +13,8 @@
 手动安装时，在 ComfyUI 目录执行，并使用 **ComfyUI 自己的 Python** 安装依赖：
 
 ```sh
-git clone https://github.com/T8mars/Comfyui-Flashvsr-Plus-T8.git custom_nodes/Comfyui-Flashvsr-Plus-T8
-python -m pip install -r custom_nodes/Comfyui-Flashvsr-Plus-T8/requirements.txt
+git clone --branch spatial-tiling https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled.git custom_nodes/ComfyUI-FlashVSR-Plus-Tiled
+python -m pip install -r custom_nodes/ComfyUI-FlashVSR-Plus-Tiled/requirements.txt
 ```
 
 依赖不包含 PyTorch 或 transformers，不会主动替换它们。`transformers==4.57.1` 已完成隔离环境验证。Windows 的 Triton 需匹配现有 PyTorch；已验证组合为 PyTorch `2.7.0+cu128` 与 `triton-windows==3.3.1.post21`。
@@ -59,3 +59,4 @@ INT8 主要减少权重显存，速度与画质取决于内容和硬件。IMAGE 
 ## 致谢与许可
 
 基于 [OpenImagingLab/FlashVSR_Plus](https://github.com/OpenImagingLab/FlashVSR_Plus) 与 [FlashVSR V1.1](https://huggingface.co/JunhaoZhuang/FlashVSR-v1.1)。INT8 线性运算使用 [Comfy Kitchen](https://github.com/Comfy-Org/comfy-kitchen)。ComfyUI 集成与派生模型由 T8star 维护。代码与模型采用 Apache-2.0；详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。
+
