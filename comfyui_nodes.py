@@ -176,8 +176,10 @@ class FlashVSRPlusUpscaleVideo:
             filename_prefix, folder_paths.get_output_directory(), width, height)
         destination = Path(folder)/f"{name}_{counter:05}_.mp4"
         Path(folder).mkdir(parents=True, exist_ok=True)
+        temp_root = Path(folder_paths.get_temp_directory())
+        temp_root.mkdir(parents=True, exist_ok=True)
         bar, progress = _progress()
-        with tempfile.TemporaryDirectory(prefix="flashvsr_plus_", dir=folder_paths.get_temp_directory()) as temporary, \
+        with tempfile.TemporaryDirectory(prefix="flashvsr_plus_", dir=temp_root) as temporary, \
                 tempfile.TemporaryDirectory(prefix=".flashvsr_plus_", dir=folder) as output_temporary:
             source, restored = Path(temporary)/"source.mp4", Path(output_temporary)/"restored.mp4"
             progress("Preparing video with its active trim, crop and audio")

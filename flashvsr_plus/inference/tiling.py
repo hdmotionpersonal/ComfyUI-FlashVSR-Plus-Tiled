@@ -19,21 +19,22 @@ def _starts(length: int, tile: int, overlap: int, alignment: int) -> list[int]:
     if length <= tile:
         return [0]
     stride = tile - overlap
-    stride = max(alignment, stride // alignment * alignment)
-    positions = list(range(0, length - tile + 1, stride))
-    last = length - tile
-    last = (last + alignment - 1) // alignment * alignment
-    last = min(last, length - tile)
-    positions.append(last)
-    return list(dict.fromkeys(positions))
+    positions = [0]
+    while positions[-1] + tile < length:
+        positions.append(positions[-1] + stride)
+    return positions
 
 
 def plan_tiles(height: int, width: int, tile_size: int, overlap: int, *, alignment: int = 128) -> tuple[Tile, ...]:
     """Cover a canvas with edge-aligned tiles and no gaps."""
     if min(height, width, tile_size, alignment) <= 0:
         raise ValueError("canvas, tile size and alignment must be positive")
+    if height % alignment or width % alignment:
+        raise ValueError("canvas dimensions must be divisible by alignment")
     if tile_size % alignment:
         raise ValueError("tile_size must be divisible by alignment")
+    if overlap % alignment:
+        raise ValueError("overlap must be divisible by alignment")
     if overlap < 0 or overlap >= tile_size / 2:
         raise ValueError("overlap must be nonnegative and smaller than half the tile")
     ys, xs = _starts(height, tile_size, overlap, alignment), _starts(width, tile_size, overlap, alignment)

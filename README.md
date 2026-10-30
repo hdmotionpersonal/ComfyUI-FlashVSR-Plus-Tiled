@@ -1,61 +1,83 @@
-# FlashVSR+ T8 · ComfyUI 视频与单图超分辨率
+# FlashVSR+ T8 Spatial Tiling for ComfyUI
 
-**简体中文** | [English](README_EN.md)
+Native ComfyUI VIDEO and IMAGE super-resolution powered by [FlashVSR+](https://github.com/OpenImagingLab/FlashVSR_Plus). This fork adds spatial tiling with overlap blending for larger output frames, alongside audio preservation, incremental video processing, and INT8 ConvRot support. Requires an NVIDIA CUDA GPU.
 
-将 [FlashVSR+](https://github.com/OpenImagingLab/FlashVSR_Plus) 接入 ComfyUI，支持原生 VIDEO / IMAGE、音频保留、分段处理与 INT8 ConvRot。适用于 NVIDIA CUDA GPU。
+[Models](https://huggingface.co/t8star/Flashvsr-Plus-Comfy) · [Example workflows](example_workflows) · [Validation](docs/VALIDATION.md) · [Spatial tiling PRD](PRD_SPATIAL_TILING_RU.md)
 
-[模型下载](https://huggingface.co/t8star/Flashvsr-Plus-Comfy) · [示例工作流](example_workflows) · [验证记录](docs/VALIDATION.md)
+## Installation
 
-## 安装
+In **ComfyUI Manager**, search for **FlashVSR+ Tiled**, install the node pack, and restart ComfyUI. The node category and searchable node names include `Tiled` to distinguish this fork from the original nodes.
 
-在 **ComfyUI Manager** 搜索 **FlashVSR+ T8**，安装并重启。Registry 节点 ID：`flashvsr-plus-t8`，Publisher：`t8star`。
-
-手动安装时，在 ComfyUI 目录执行，并使用 **ComfyUI 自己的 Python** 安装依赖：
+To install manually, run from the ComfyUI directory and use **ComfyUI's own Python** to install dependencies:
 
 ```sh
 git clone --branch spatial-tiling https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled.git custom_nodes/ComfyUI-FlashVSR-Plus-Tiled
 python -m pip install -r custom_nodes/ComfyUI-FlashVSR-Plus-Tiled/requirements.txt
 ```
 
-依赖不包含 PyTorch 或 transformers，不会主动替换它们。`transformers==4.57.1` 已完成隔离环境验证。Windows 的 Triton 需匹配现有 PyTorch；已验证组合为 PyTorch `2.7.0+cu128` 与 `triton-windows==3.3.1.post21`。
+The dependency list does not include PyTorch or Transformers and will not replace them. `transformers==4.57.1` was verified in an isolated environment. On Windows, Triton must match the installed PyTorch version; the verified combination is PyTorch `2.7.0+cu128` with `triton-windows==3.3.1.post21`.
 
-## 快速使用
+## Quick start
 
-1. 视频导入 [VIDEO 工作流](example_workflows/FlashVSR_Plus_Video.json) 或 [视频帧 IMAGE 工作流](example_workflows/FlashVSR_Plus_Frames.json)。将 [示例视频](example_workflows/flashvsr_plus_demo.mp4) 放入 `ComfyUI/input`。单张照片使用下方专用工作流。
-2. 在 **Model Loader** 选择模式、精度和解码器，保持 `auto_download=true`。推荐先用 `turbo` + `int8_convrot` + `tiny`；INT8 需要 Comfy Kitchen `>=0.2.35`。
-3. 设置倍率或目标宽高后运行。VIDEO 路径保留音频、帧率及上游剪辑/裁切；长视频优先使用 VIDEO。
+1. Import the [VIDEO workflow](example_workflows/FlashVSR_Plus_Video.json) or [video-frame IMAGE workflow](example_workflows/FlashVSR_Plus_Frames.json). Copy the [sample video](example_workflows/flashvsr_plus_demo.mp4) into `ComfyUI/input`. For a still photo, use the [single-image workflow](example_workflows/FlashVSR_Plus_Single_Image.json).
+2. In **FlashVSR+ Tiled Model Loader**, choose a mode, precision, attention backend, and decoder. For a first run, use `turbo`, `int8_convrot`, and `tiny`; leave `auto_download` enabled if the model files are not already installed. INT8 requires Comfy Kitchen `>=0.2.35`.
+3. Set the scale or target dimensions and queue the workflow. The VIDEO path preserves audio, frame rate, and upstream trim/crop settings. Use VIDEO for longer clips.
 
-| 节点 | 功能 |
+| Node | Purpose |
 | --- | --- |
-| FlashVSR+ Tiled Model Loader | Turbo / Base / V1.1，BF16 / FP16 / INT8 ConvRot，Tiny / Wan VAE |
-| FlashVSR+ Tiled Upscale Video | 原生 VIDEO 输入输出，增量读取和编码 |
-| FlashVSR+ Tiled Upscale Frames | 单张 RGB 图片或连续视频帧超分辨率，输出图像与运行信息 |
-| FlashVSR+ Tiled Options | 时间压缩、空间 tile / overlap / blend、缓存卸载、解码与颜色修正 |
+| FlashVSR+ Tiled Model Loader | Load Turbo, Base, or V1 weights in BF16, FP16, or INT8 ConvRot with Tiny or Wan VAE decoding |
+| FlashVSR+ Tiled Upscale Video | Upscale native VIDEO input with incremental reading and encoding |
+| FlashVSR+ Tiled Upscale Frames | Upscale an RGB image or a batch of video frames and return run information |
+| FlashVSR+ Tiled Options | Configure spatial tiles, overlap blending, temporal processing, cache offloading, decoding, and color correction |
 
-## 单图放大
+## Spatial tiling
 
-导入 [单图工作流](example_workflows/FlashVSR_Plus_Single_Image.json)，在 **Load Image** 选择静态 PNG/JPEG，运行后由 **Save Image** 保存 PNG。可将 [示例图片](example_workflows/flashvsr_plus_sample.png) 放入 `ComfyUI/input` 直接复现；也可拖入 [带工作流的实测结果 PNG](assets/single_image/portrait.png)。[API 示例](example_workflows/FlashVSR_Plus_Single_Image_API.json)
+Connect **FlashVSR+ Tiled Options** to either tiled upscale node and enable `spatial_tiling`. The tile size and overlap are measured in output-canvas pixels. The canvas is padded to the model's 128-pixel alignment, tiled with the requested overlap, then cropped back to the requested output dimensions.
 
-默认 `turbo / int8_convrot / tiny`、4×、固定 seed 1，并开启颜色校正。已完成 BF16 / INT8 的人像、1080p 照片与文字图 GPU 实测；照片增强验收通过，小字与平色图表不保证保真。多张无关图片需逐张处理，透明通道需单独保留。[实测对比与验收范围](docs/SINGLE_IMAGE.md)
+Choose one of three overlap blend methods:
 
-## 模型与加速
+- `cosine` — smooth cosine feathering across shared edges; recommended starting point.
+- `linear` — linear feathering across shared edges.
+- `gaussian` — center-weighted feathering with adjustable `spatial_gaussian_sigma`.
 
-模型存放于 `ComfyUI/models/flashvsr_plus` 或本节点的 `ckpts`，也可在加载器指定根目录。完整文件结构见 [模型仓库](https://huggingface.co/t8star/Flashvsr-Plus-Comfy)。下载使用固定 revision 与 SHA-256 校验。
+Weights from overlapping tiles are normalized by their sum. Canvas edges retain full weight where there is no neighboring tile.
 
-- **INT8 ConvRot**：预转换 DiT 每个约 **1.45 GB**，配合对应 LQ 与解码器即可运行；无需再下载原始 DiT。仅 transformer block 的 Linear 使用 Comfy Kitchen W8A8，其他组件保留浮点计算。
-- **注意力**：支持官方 BSA、Triton 和 SDPA。`auto` 按可用性选择；高清建议使用 Triton。SDPA 会在分配过大的掩码之前报错。BSA 原生内核未在本机 Windows 验证。
-- **分段解码**：Tiny 的 `decode_every` 使用 4 的正整数倍，例如 `4`；Wan VAE 设置为 `0`，使用全片解码。
+| Option | Default | Notes |
+| --- | ---: | --- |
+| `spatial_tiling` | `false` | Enable spatial tile inference. |
+| `spatial_tile_size` | `512` | Output pixels per tile; must be a multiple of 128. |
+| `spatial_overlap` | `128` | Shared output pixels; must be a multiple of 128 and less than half the tile size. |
+| `spatial_blend` | `cosine` | `cosine`, `linear`, or `gaussian`. |
+| `spatial_gaussian_sigma` | `0.25` | Controls the Gaussian blend profile. |
 
-INT8 主要减少权重显存，速度与画质取决于内容和硬件。IMAGE 输出需整批 RAM；VIDEO 按恒定帧率处理，VFR 素材请先规范为 CFR。PCM 等无法直接写入 MP4 的音频会转为 AAC。每次请求后权重回 CPU；`keep_loaded` 保留 CPU 副本。
+Spatial VIDEO tiling currently requires the **Tiny** decoder and a positive numeric `decode_every` value. It writes temporary float16 tile segments to disk; temporary storage grows with clip length and the total tile area. Spatial VIDEO tiling with Wan VAE is not supported yet. Each tile uses its crop from the global latent-noise coordinates. Tile boundaries can still differ because each tile has a smaller attention context. Color correction in spatial VIDEO mode is applied per tile; disable it if you see color shifts at seams.
 
-## 验证
+A GPU smoke test on an RTX 4070 Ti SUPER used V1 INT8 ConvRot, Tiny, SDPA, 512-pixel tiles, and 128-pixel overlap. The 33-frame demo clip completed at its full duration with cosine blending. Cosine, linear, and Gaussian each completed an 8-frame GPU run. The full-resolution output was 600×336; the padded canvas produced two horizontal tiles with exactly 128 pixels of overlap.
 
-**45 项回归测试通过**。Turbo / Tiny / Triton 的 BF16 和 INT8 均完成 **1920×1080、5 秒、24 FPS、120 帧**真实 ComfyUI 验证，逐帧解码、时间戳及音频检查通过。`transformers==4.57.1` 另有完整 GPU 工作流验证。[验证范围](docs/VALIDATION.md) · [1080p 实测片段](assets/validation_1080p_5s.mp4)
+## Single-image upscaling
 
-## 社区与资源
+Import the [single-image workflow](example_workflows/FlashVSR_Plus_Single_Image.json), choose a static PNG or JPEG in **Load Image**, and run it to save a PNG through **Save Image**. Copy the [sample image](example_workflows/flashvsr_plus_sample.png) into `ComfyUI/input` to reproduce the example, or load the [tested output PNG with its embedded workflow](assets/single_image/portrait.png). See the [API workflow](example_workflows/FlashVSR_Plus_Single_Image_API.json) for programmatic use.
 
-[B站](https://space.bilibili.com/385085361) · [YouTube](https://www.youtube.com/@T8star-Aix/) · [API](https://api.seedance.nz/sign-up?aff=5f4w) · [免费画廊](https://www.openzhenzhen.com) · [在线 AI 应用](https://www.runninghub.ai/zh-cn/user-center/1907375370302308353/userPost?inviteCode=rh-v1121) · [ComfyUI 整合包](https://pan.quark.cn/s/264edb7e36bd) · [Hugging Face](https://huggingface.co/t8star)
+Defaults are `turbo / int8_convrot / tiny`, 4× scaling, fixed seed 1, and color correction enabled. BF16 and INT8 GPU checks covered a portrait, a 1080p photo, and a text chart. Photo enhancement passed on these samples; small text and flat graphics are not guaranteed to remain exact. Process unrelated images individually and preserve alpha separately. See [comparisons and acceptance scope](docs/SINGLE_IMAGE.md).
 
-## 致谢与许可
+## Models and acceleration
 
-基于 [OpenImagingLab/FlashVSR_Plus](https://github.com/OpenImagingLab/FlashVSR_Plus) 与 [FlashVSR V1.1](https://huggingface.co/JunhaoZhuang/FlashVSR-v1.1)。INT8 线性运算使用 [Comfy Kitchen](https://github.com/Comfy-Org/comfy-kitchen)。ComfyUI 集成与派生模型由 T8star 维护。代码与模型采用 Apache-2.0；详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。
+Models are discovered in `ComfyUI/models/flashvsr_plus` and the node's `ckpts` directory. You can also set a custom model root in the loader. See the [model repository](https://huggingface.co/t8star/Flashvsr-Plus-Comfy) for the complete file layout. Downloads use pinned revisions and SHA-256 verification.
+
+- **INT8 ConvRot:** each preconverted DiT is approximately **1.45 GB**. It runs with the matching LQ projection and decoder; the original DiT is not required. Transformer-block linear layers use Comfy Kitchen W8A8, while other components remain in floating point.
+- **Attention:** official BSA, Triton, and SDPA backends are supported. `auto` selects an available backend; Triton is recommended for high-resolution output. SDPA rejects oversized masks before allocation. Native BSA has not been verified on Windows.
+- **Segmented decoding:** Tiny accepts positive `decode_every` values divisible by four, such as `4`. Wan VAE uses full-clip decoding and requires `decode_every=0`.
+
+INT8 primarily reduces weight memory; speed and image quality depend on the content and hardware. IMAGE output requires RAM for the full batch. VIDEO uses a constant-frame-rate timeline; normalize variable-frame-rate sources to CFR first. Audio that cannot be copied into MP4, such as PCM, is encoded as AAC. Model weights return to CPU after each request; `keep_loaded` retains the CPU copy between requests.
+
+## Validation
+
+**48 regression tests passed.** Spatial GPU checks covered all three blend methods, plus a full 33-frame cosine-blended video run on an RTX 4070 Ti SUPER. See [validation scope](docs/VALIDATION.md) and the [1080p validation clip](assets/validation_1080p_5s.mp4) for the existing full-resolution validation records.
+
+## Community and resources
+
+[Bilibili](https://space.bilibili.com/385085361) · [YouTube](https://www.youtube.com/@T8star-Aix/) · [API](https://api.seedance.nz/sign-up?aff=5f4w) · [Free gallery](https://www.openzhenzhen.com) · [Online AI apps](https://www.runninghub.ai/zh-cn/user-center/1907375370302308353/userPost?inviteCode=rh-v1121) · [ComfyUI bundle](https://pan.quark.cn/s/264edb7e36bd) · [Hugging Face](https://huggingface.co/t8star)
+
+## Credits and license
+
+Based on [OpenImagingLab/FlashVSR_Plus](https://github.com/OpenImagingLab/FlashVSR_Plus) and [FlashVSR V1.1](https://huggingface.co/JunhaoZhuang/FlashVSR-v1.1). INT8 linear operations use [Comfy Kitchen](https://github.com/Comfy-Org/comfy-kitchen). This ComfyUI integration and its derived checkpoints are maintained by T8star. Code and model files are licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE).

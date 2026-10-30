@@ -15,6 +15,7 @@ import torch
 
 from flashvsr_plus.backends import validate_attention_size
 from flashvsr_plus.comfy_runtime import Options, geometry, image_to_model
+from flashvsr_plus.inference.tiling import Tile, blend_weights, plan_tiles, stitch_tiles
 from flashvsr_plus.inference import InferenceRequest
 from flashvsr_plus.inference.pipeline import FlashVSRInferencePipeline
 from flashvsr_plus.inference.presets import stream_config_for_mode
@@ -235,6 +236,38 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(result.video.shape, (1, 3, 2, 2, 2))
 
 
+class SpatialTilingTests(unittest.TestCase):
+    def test_plan_preserves_requested_overlap_and_covers_aligned_canvas(self):
+        tiles = plan_tiles(384, 640, 512, 128)
+        self.assertEqual(tiles, (Tile(0, 0, 384, 512), Tile(0, 384, 384, 256)))
+        coverage = torch.zeros((384, 640), dtype=torch.int32)
+        for tile in tiles:
+            coverage[tile.y:tile.y + tile.height, tile.x:tile.x + tile.width] += 1
+        self.assertTrue(torch.all(coverage > 0))
+        self.assertEqual(tiles[0].x + tiles[0].width - tiles[1].x, 128)
+
+    def test_overlap_blenders_stitch_constant_tiles_without_seams_or_gaps(self):
+        tiles = plan_tiles(384, 640, 512, 128)
+        predictions = [torch.full((1, 2, tile.height, tile.width), float(i + 1))
+                       for i, tile in enumerate(tiles)]
+        for method in ("linear", "cosine", "gaussian"):
+            with self.subTest(method=method):
+                weights = [blend_weights(tile, 384, 640, tiles, method) for tile in tiles]
+                self.assertTrue(all(torch.isfinite(weight).all() and torch.all(weight > 0)
+                                    for weight in weights))
+                result = stitch_tiles(384, 640, tiles, predictions, method=method)
+                self.assertEqual(tuple(result.shape), (1, 2, 384, 640))
+                self.assertTrue(torch.isfinite(result).all())
+                self.assertTrue(torch.allclose(result[..., :100], torch.ones_like(result[..., :100])))
+                self.assertTrue(torch.allclose(result[..., -100:], torch.full_like(result[..., -100:], 2)))
+
+    def test_plan_rejects_unaligned_canvas_or_overlap(self):
+        with self.assertRaisesRegex(ValueError, "canvas dimensions"):
+            plan_tiles(384, 639, 512, 128)
+        with self.assertRaisesRegex(ValueError, "overlap must be divisible"):
+            plan_tiles(384, 640, 512, 64)
+
+
 class AudioTests(unittest.TestCase):
     def test_pcm_source_audio_is_encoded_when_mp4_cannot_copy_it(self):
         import av
@@ -247,7 +280,19 @@ class AudioTests(unittest.TestCase):
             subprocess.run([ffmpeg, "-y", "-f", "lavfi", "-i", "color=size=24x16:rate=8:duration=1.125",
                 "-f", "lavfi", "-i", "sine=frequency=440:duration=1.125", "-c:v", "libx264",
                 "-c:a", "pcm_s16le", str(source)], check=True, capture_output=True)
-            mux_source_audio(source, source, target)
+            original_run = subprocess.run
+            copy_attempts = []
+            def fail_pcm_copy(command, *args, **kwargs):
+                if "-c:a" in command and command[command.index("-c:a") + 1] == "copy":
+                    copy_attempts.append(command)
+                    return subprocess.CompletedProcess(command, 1, "",
+                        "codec not currently supported in container")
+                copy_attempts.append(command)
+                return original_run(command, *args, **kwargs)
+            with patch("flashvsr_plus.inference.output.subprocess.run", side_effect=fail_pcm_copy):
+                mux_source_audio(source, source, target)
+            self.assertEqual(len(copy_attempts), 2)
+            self.assertEqual(copy_attempts[1][copy_attempts[1].index("-c:a") + 1], "aac")
             with av.open(str(target)) as container:
                 self.assertEqual(container.streams.audio[0].codec_context.name, "aac")
                 self.assertEqual(sum(1 for _ in container.decode(video=0)), 9)

@@ -20,3 +20,4 @@ dist/
 /.env
 /.env.*
 /node.zip
+/artifacts/

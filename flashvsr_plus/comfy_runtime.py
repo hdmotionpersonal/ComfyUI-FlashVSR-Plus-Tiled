@@ -74,8 +74,8 @@ class Options:
             raise TypeError("spatial_tiling must be a boolean")
         if type(self.spatial_tile_size) is not int or self.spatial_tile_size < 256 or self.spatial_tile_size % 128:
             raise ValueError("spatial_tile_size must be an integer >=256 and divisible by 128")
-        if type(self.spatial_overlap) is not int or self.spatial_overlap < 0 or self.spatial_overlap >= self.spatial_tile_size / 2:
-            raise ValueError("spatial_overlap must be nonnegative and smaller than half the tile")
+        if type(self.spatial_overlap) is not int or self.spatial_overlap < 0 or self.spatial_overlap >= self.spatial_tile_size / 2 or self.spatial_overlap % 128:
+            raise ValueError("spatial_overlap must be nonnegative, divisible by 128, and smaller than half the tile")
         if self.spatial_blend not in ("cosine", "linear", "gaussian"):
             raise ValueError("spatial_blend must be cosine, linear or gaussian")
         if not math.isfinite(self.spatial_gaussian_sigma) or not 0.05 <= self.spatial_gaussian_sigma <= 1.0:
