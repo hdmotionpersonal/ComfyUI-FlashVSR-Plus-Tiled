@@ -44,7 +44,7 @@
     },
     {
       "id": 2,
-      "type": "FlashVSRPlusModelLoader",
+      "type": "FlashVSRPlusTiledModelLoader",
       "title": "FlashVSR+ Model Loader",
       "pos": [
         30,
@@ -75,7 +75,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "FlashVSRPlusModelLoader",
+        "Node name for S&R": "FlashVSRPlusTiledModelLoader",
         "cnr_id": "flashvsr-plus-t8",
         "ver": "0.2.0"
       },
@@ -91,7 +91,7 @@
     },
     {
       "id": 5,
-      "type": "FlashVSRPlusOptions",
+      "type": "FlashVSRPlusTiledOptions",
       "title": "Options / Color correction ON",
       "pos": [
         420,
@@ -116,7 +116,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "FlashVSRPlusOptions",
+        "Node name for S&R": "FlashVSRPlusTiledOptions",
         "cnr_id": "flashvsr-plus-t8",
         "ver": "0.2.0"
       },
@@ -142,7 +142,7 @@
     },
     {
       "id": 3,
-      "type": "FlashVSRPlusUpscaleFrames",
+      "type": "FlashVSRPlusTiledUpscaleFrames",
       "title": "FlashVSR+ Single Image / 4x",
       "pos": [
         420,
@@ -189,7 +189,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "FlashVSRPlusUpscaleFrames",
+        "Node name for S&R": "FlashVSRPlusTiledUpscaleFrames",
         "cnr_id": "flashvsr-plus-t8",
         "ver": "0.2.0"
       },
@@ -286,3 +286,4 @@
   },
   "version": 0.4
 }
+
