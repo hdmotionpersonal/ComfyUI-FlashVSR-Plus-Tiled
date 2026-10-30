@@ -30,7 +30,7 @@ Issues = "https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled/issues
 Models = "https://huggingface.co/t8star/Flashvsr-Plus-Comfy"
 
 [tool.comfy]
-PublisherId = "t8star"
+PublisherId = "hdmotion"
 DisplayName = "FlashVSR+ Tiled (T8 fork)"
 requires-comfyui = ">=0.36.0"
 
