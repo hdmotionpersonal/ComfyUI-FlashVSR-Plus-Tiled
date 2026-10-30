@@ -213,8 +213,11 @@ class GeometryTests(unittest.TestCase):
         Options().validate()
         self.assertEqual(Options().spatial_tile_width, 512)
         Options(spatial_tile_height=384, spatial_tile_width=512, spatial_overlap=128).validate()
+        Options(spatial_overlap=24).validate()
+        Options(spatial_overlap=64).validate()
         for option in (Options(decode_every=3), Options(temporal_compression=3),
                        Options(vae_overlap=30), Options(spatial_tile_width=500),
+                       Options(spatial_overlap=12),
                        Options(spatial_tile_height=384, spatial_tile_width=512, spatial_overlap=192)):
             with self.assertRaises(ValueError):
                 option.validate()
@@ -273,6 +276,17 @@ class SpatialTilingTests(unittest.TestCase):
         self.assertEqual(plan_tiles(384, 640, 512, 128, tile_width=0),
                          plan_tiles(384, 640, 512, 128))
 
+    def test_custom_overlap_keeps_full_aligned_tiles_by_padding_the_edges(self):
+        for overlap, expected_x, expected_y in ((24, 488, 360), (64, 448, 320)):
+            with self.subTest(overlap=overlap):
+                tiles = plan_tiles(640, 896, 384, overlap, tile_width=512, pad_edges=True)
+                self.assertEqual(len(tiles), 4)
+                self.assertTrue(all(tile.height == 384 and tile.width == 512 for tile in tiles))
+                self.assertEqual(tiles[2].y, expected_y)
+                self.assertEqual(tiles[1].x, expected_x)
+                self.assertEqual(tiles[0].height - expected_y, overlap)
+                self.assertEqual(tiles[0].width - expected_x, overlap)
+
     def test_overlap_blenders_stitch_constant_tiles_without_seams_or_gaps(self):
         tiles = plan_tiles(384, 640, 512, 128)
         predictions = [torch.full((1, 2, tile.height, tile.width), float(i + 1))
@@ -292,7 +306,7 @@ class SpatialTilingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "canvas dimensions"):
             plan_tiles(384, 639, 512, 128)
         with self.assertRaisesRegex(ValueError, "overlap must be divisible"):
-            plan_tiles(384, 640, 512, 64)
+            plan_tiles(384, 640, 512, 4)
         with self.assertRaisesRegex(ValueError, "tile dimensions"):
             plan_tiles(384, 640, 512, 128, tile_width=500)
 

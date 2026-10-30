@@ -26,7 +26,8 @@ def _starts(length: int, tile: int, overlap: int, alignment: int) -> list[int]:
 
 
 def plan_tiles(height: int, width: int, tile_height: int, overlap: int, *,
-               tile_width: int | None = None, alignment: int = 128) -> tuple[Tile, ...]:
+               tile_width: int | None = None, alignment: int = 128,
+               overlap_alignment: int = 8, pad_edges: bool = False) -> tuple[Tile, ...]:
     """Cover a canvas with edge-aligned tiles and no gaps."""
     tile_width = tile_height if tile_width is None or tile_width == 0 else tile_width
     if min(height, width, tile_height, tile_width, alignment) <= 0:
@@ -35,13 +36,16 @@ def plan_tiles(height: int, width: int, tile_height: int, overlap: int, *,
         raise ValueError("canvas dimensions must be divisible by alignment")
     if tile_height % alignment or tile_width % alignment:
         raise ValueError("tile dimensions must be divisible by alignment")
-    if overlap % alignment:
-        raise ValueError("overlap must be divisible by alignment")
+    if overlap_alignment <= 0 or overlap % overlap_alignment:
+        raise ValueError(f"overlap must be divisible by {overlap_alignment}")
     if overlap < 0 or overlap >= min(tile_height, tile_width) / 2:
         raise ValueError("overlap must be nonnegative and smaller than half the tile")
     ys = _starts(height, tile_height, overlap, alignment)
     xs = _starts(width, tile_width, overlap, alignment)
-    return tuple(Tile(y, x, min(tile_height, height-y), min(tile_width, width-x))
+    full_height = pad_edges and len(ys) > 1
+    full_width = pad_edges and len(xs) > 1
+    return tuple(Tile(y, x, tile_height if full_height else min(tile_height, height-y),
+                      tile_width if full_width else min(tile_width, width-x))
                  for y in ys for x in xs)
 
 

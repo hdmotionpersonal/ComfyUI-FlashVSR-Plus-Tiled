@@ -32,7 +32,7 @@ The dependency list does not include PyTorch or Transformers and will not replac
 
 ## Spatial tiling
 
-Connect **FlashVSR+ Tiled Options** to either tiled upscale node and enable `spatial_tiling`. The tile size and overlap are measured in output-canvas pixels. The canvas is padded to the model's 128-pixel alignment, tiled with the requested overlap, then cropped back to the requested output dimensions.
+Connect **FlashVSR+ Tiled Options** to either tiled upscale node and enable `spatial_tiling`. The tile size and overlap are measured in output-canvas pixels. Tile dimensions must be multiples of 128; overlap can be set in 8-pixel steps. The canvas is padded to fit complete tiles and cropped back to the requested output dimensions.
 
 Choose one of three overlap blend methods:
 
@@ -47,7 +47,7 @@ Before tiled inference, the ComfyUI console reports the tile size, final output 
 | `spatial_tiling` | `false` | Enable spatial tile inference. |
 | `spatial_tile_height` | `512` | Tile height in output pixels; must be a multiple of 128. |
 | `spatial_tile_width` | `512` | Tile width in output pixels, independently adjustable from height; set a multiple of 128. `0` follows the height for older workflows. |
-| `spatial_overlap` | `128` | Shared output pixels on both axes; must be a multiple of 128 and less than half of both tile dimensions. |
+| `spatial_overlap` | `128` | Shared output pixels on both axes; step 8, and less than half of both tile dimensions. |
 | `spatial_blend` | `cosine` | `cosine`, `linear`, or `gaussian`. |
 | `spatial_gaussian_sigma` | `0.25` | Controls the Gaussian blend profile. |
 

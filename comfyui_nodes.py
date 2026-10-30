@@ -147,7 +147,7 @@ class FlashVSRPlusOptions:
         return {"required": {
             "spatial_tiling": ("BOOLEAN", {"default": False, "tooltip": "Run Frames or Tiny-decoder VIDEO inference on overlapping spatial tiles. VIDEO stores temporary float32 segments on disk."}),
             "spatial_tile_height": ("INT", {"default": 512, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile height in output canvas pixels."}),
-            "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 128, "tooltip": "Overlap in output canvas pixels; must be less than half of both tile dimensions."}),
+            "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 8, "tooltip": "Overlap in output pixels; step 8, less than half of both tile dimensions. Tile dimensions stay multiples of 128."}),
             "spatial_blend": (["cosine", "linear", "gaussian"],),
             "spatial_gaussian_sigma": ("FLOAT", {"default": .25, "min": .05, "max": 1., "step": .05}),
             "temporal_compression": ([4, 2, 1],),
@@ -252,7 +252,9 @@ class FlashVSRPlusUpscaleVideo:
                     raise ValueError("Spatial VIDEO tiling requires a numeric Tiny decode_every interval")
                 tile_width = options.effective_spatial_tile_width
                 tiles = plan_tiles(ch, cw, options.spatial_tile_height, options.spatial_overlap,
-                                   tile_width=tile_width)
+                                   tile_width=tile_width, pad_edges=True)
+                cw = max(cw, max(tile.x + tile.width for tile in tiles))
+                ch = max(ch, max(tile.y + tile.height for tile in tiles))
                 report_spatial_plan(tiles, tile_width, options.spatial_tile_height,
                                     width, height, progress)
                 if len(tiles) == 1:

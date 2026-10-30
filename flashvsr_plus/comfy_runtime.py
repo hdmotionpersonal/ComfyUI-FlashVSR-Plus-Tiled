@@ -78,8 +78,8 @@ class Options:
         if type(self.spatial_tile_width) is not int or (self.spatial_tile_width != 0 and
                 (self.spatial_tile_width < 256 or self.spatial_tile_width % 128)):
             raise ValueError("spatial_tile_width must be 0 (same as height) or an integer >=256 divisible by 128")
-        if type(self.spatial_overlap) is not int or self.spatial_overlap < 0 or self.spatial_overlap >= min(self.spatial_tile_height, self.spatial_tile_width or self.spatial_tile_height) / 2 or self.spatial_overlap % 128:
-            raise ValueError("spatial_overlap must be nonnegative, divisible by 128, and smaller than half of both tile dimensions")
+        if type(self.spatial_overlap) is not int or self.spatial_overlap < 0 or self.spatial_overlap >= min(self.spatial_tile_height, self.spatial_tile_width or self.spatial_tile_height) / 2 or self.spatial_overlap % 8:
+            raise ValueError("spatial_overlap must be nonnegative, divisible by 8, and smaller than half of both tile dimensions")
         if self.spatial_blend not in ("cosine", "linear", "gaussian"):
             raise ValueError("spatial_blend must be cosine, linear or gaussian")
         if not math.isfinite(self.spatial_gaussian_sigma) or not 0.05 <= self.spatial_gaussian_sigma <= 1.0:
@@ -291,7 +291,9 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
     if options.spatial_tiling:
         tile_width = options.effective_spatial_tile_width
         tiles = plan_tiles(ch, cw, options.spatial_tile_height, options.spatial_overlap,
-                           tile_width=tile_width)
+                           tile_width=tile_width, pad_edges=True)
+        cw = max(cw, max(tile.x + tile.width for tile in tiles))
+        ch = max(ch, max(tile.y + tile.height for tile in tiles))
         report_spatial_plan(tiles, tile_width, options.spatial_tile_height,
                             width, height, progress)
         validate_attention_size(min(ch, options.spatial_tile_height),
