@@ -91,7 +91,7 @@ class FlashVSRPlusOptions:
     def INPUT_TYPES(cls):
         return {"required": {
             "spatial_tiling": ("BOOLEAN", {"default": False, "tooltip": "Run Frames or Tiny-decoder VIDEO inference on overlapping spatial tiles. VIDEO stores temporary float32 segments on disk."}),
-            "spatial_tile_size": ("INT", {"default": 1024, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile size in output canvas pixels."}),
+            "spatial_tile_size": ("INT", {"default": 512, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile size in output canvas pixels."}),
             "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 128, "tooltip": "Overlap in output canvas pixels; must be less than half the tile size."}),
             "spatial_blend": (["cosine", "linear", "gaussian"],),
             "spatial_gaussian_sigma": ("FLOAT", {"default": .25, "min": .05, "max": 1., "step": .05}),

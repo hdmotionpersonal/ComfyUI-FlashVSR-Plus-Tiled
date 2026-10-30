@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 @dataclasses.dataclass(frozen=True)
 class Options:
     spatial_tiling: bool = False
-    spatial_tile_size: int = 1024
+    spatial_tile_size: int = 512
     spatial_overlap: int = 128
     spatial_blend: str = "cosine"
     spatial_gaussian_sigma: float = 0.25

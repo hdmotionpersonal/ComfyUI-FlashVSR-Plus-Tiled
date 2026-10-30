@@ -36,7 +36,7 @@
 
 ## Параметры
 
-Начальные значения для экспериментов: tile 1024 px, overlap 128 px, Cosine, Gaussian sigma scale 0.25. Tile и overlap заданы на целевом canvas; tile кратен 128; overlap меньше половины tile. Эти значения не считаются оптимальными до GPU-сравнения.
+Рабочее начальное значение после GPU smoke check: tile 512 px, overlap 128 px, Cosine, Gaussian sigma scale 0.25. Tile и overlap заданы на целевом canvas; tile кратен 128; overlap меньше половины tile. Размер 512 прошёл V1 INT8 + Tiny + SDPA на RTX 4070 Ti SUPER.
 
 ## Критерии приёмки
 
