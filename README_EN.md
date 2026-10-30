@@ -40,7 +40,7 @@ Choose one of three overlap blend methods:
 - `linear` — linear feathering across shared edges.
 - `gaussian` — center-weighted feathering with adjustable `spatial_gaussian_sigma`.
 
-Weights from overlapping tiles are normalized by their sum. Canvas edges retain full weight where there is no neighboring tile. The ComfyUI console shows a separate `tqdm` progress bar for each tile, labeled with its size and canvas position.
+Before tiled inference, the ComfyUI console reports the tile size, final output dimensions, and tile grid (columns × rows). Weights from overlapping tiles are normalized by their sum. Canvas edges retain full weight where there is no neighboring tile. The console shows a separate `tqdm` progress bar for each tile, labeled with its size and canvas position.
 
 | Option | Default | Notes |
 | --- | ---: | --- |

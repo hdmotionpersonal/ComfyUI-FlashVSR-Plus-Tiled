@@ -17,7 +17,8 @@ import folder_paths
 import comfy.model_management as mm
 import comfy.utils
 
-from .flashvsr_plus.comfy_runtime import ModelHandle, Options, geometry, upscale_images
+from .flashvsr_plus.comfy_runtime import (ModelHandle, Options, geometry,
+                                          report_spatial_plan, upscale_images)
 from .flashvsr_plus.inference import InferenceRequest
 from .flashvsr_plus.inference.output import Float16SegmentSpool, IncrementalVideoWriter, mux_source_audio
 from .flashvsr_plus.inference.tiling import plan_tiles, stitch_tiles
@@ -252,6 +253,8 @@ class FlashVSRPlusUpscaleVideo:
                 tile_width = options.effective_spatial_tile_width
                 tiles = plan_tiles(ch, cw, options.spatial_tile_height, options.spatial_overlap,
                                    tile_width=tile_width)
+                report_spatial_plan(tiles, tile_width, options.spatial_tile_height,
+                                    width, height, progress)
                 if len(tiles) == 1:
                     result = model.infer(InferenceRequest(input_path=source, output_path=restored,
                         height=ch, width=cw, content_height=height, content_width=width,

@@ -105,6 +105,21 @@ def geometry(source_width, source_height, scale, width=0, height=0):
     return int(width), int(height), math.ceil(width/128)*128, math.ceil(height/128)*128
 
 
+def report_spatial_plan(tiles, tile_width, tile_height, output_width, output_height,
+                        progress=None):
+    columns = len({tile.x for tile in tiles})
+    rows = len({tile.y for tile in tiles})
+    message = (f"Spatial plan: tile={tile_width}x{tile_height} px (W x H); "
+               f"output={output_width}x{output_height} px (W x H); "
+               f"grid={columns} tiles horizontally x {rows} vertically "
+               f"({len(tiles)} total)")
+    if progress is None:
+        log.info(message)
+    else:
+        progress(message)
+    return message
+
+
 def image_to_model(images: torch.Tensor, width: int, height: int,
                    canvas_width: int, canvas_height: int) -> torch.Tensor:
     if not isinstance(images, torch.Tensor) or images.ndim != 4 or images.shape[-1] != 3 or images.shape[0] < 1:
@@ -277,6 +292,8 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
         tile_width = options.effective_spatial_tile_width
         tiles = plan_tiles(ch, cw, options.spatial_tile_height, options.spatial_overlap,
                            tile_width=tile_width)
+        report_spatial_plan(tiles, tile_width, options.spatial_tile_height,
+                            width, height, progress)
         validate_attention_size(min(ch, options.spatial_tile_height),
                                 min(cw, tile_width), backend)
     else:

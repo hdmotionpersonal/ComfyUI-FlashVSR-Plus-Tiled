@@ -14,7 +14,7 @@ from unittest.mock import patch
 import torch
 
 from flashvsr_plus.backends import validate_attention_size
-from flashvsr_plus.comfy_runtime import Options, geometry, image_to_model
+from flashvsr_plus.comfy_runtime import Options, geometry, image_to_model, report_spatial_plan
 from flashvsr_plus.inference.tiling import Tile, blend_weights, plan_tiles, stitch_tiles
 from flashvsr_plus.inference import InferenceRequest
 from flashvsr_plus.inference.pipeline import FlashVSRInferencePipeline
@@ -240,6 +240,16 @@ class DecoderTests(unittest.TestCase):
 
 
 class SpatialTilingTests(unittest.TestCase):
+    def test_spatial_plan_reports_tile_output_and_grid_dimensions(self):
+        from unittest.mock import Mock
+        tiles = plan_tiles(640, 896, 384, 128, tile_width=512)
+        progress = Mock()
+        message = report_spatial_plan(tiles, 512, 384, 880, 640, progress)
+        self.assertEqual(message,
+            "Spatial plan: tile=512x384 px (W x H); output=880x640 px (W x H); "
+            "grid=2 tiles horizontally x 2 vertically (4 total)")
+        progress.assert_called_once_with(message)
+
     def test_plan_preserves_requested_overlap_and_covers_aligned_canvas(self):
         tiles = plan_tiles(384, 640, 512, 128)
         self.assertEqual(tiles, (Tile(0, 0, 384, 512), Tile(0, 384, 384, 256)))
