@@ -172,7 +172,8 @@ class ModelHandle:
         return build_inference_pipeline(config, paths)
 
     def infer(self, request: InferenceRequest, *, seed=1, options: Options | None = None,
-              progress: Callable[[str], None] | None = None, interrupt: Callable[[], None] | None = None):
+              progress: Callable[[str], None] | None = None, interrupt: Callable[[], None] | None = None,
+              segment_writer=None):
         options = (options or Options(decode_every=(0 if self.decoder == "vae" else 28))).validate()
         progress = progress or (lambda message: log.info("FlashVSR+: %s", message))
         interrupt = interrupt or (lambda: None)
@@ -180,7 +181,9 @@ class ModelHandle:
             interrupt()
             request.validate()
             backend = resolve_backend(self.attention, self.device)
-            h, w = ((request.height, request.width) if request.height is not None else
+            h, w = (((request.spatial_crop_height, request.spatial_crop_width)
+                     if request.spatial_crop_height is not None else (request.height, request.width))
+                    if request.height is not None else
                     request.lq_video.shape[-2:] if request.lq_video is not None else (request.height, request.width))
             validate_attention_size(h, w, backend)
             if self.decoder == "vae" and request.input_path is not None and options.decode_every:
@@ -195,12 +198,14 @@ class ModelHandle:
                 color_correction=options.color_correction, color_correction_levels=options.color_correction_levels,
                 color_correction_chunk_size=options.color_correction_chunk_size)
             config.spatial_noise_origin = (
-                (request.noise_origin_y, request.noise_origin_x)
-                if request.noise_origin_y is not None else None
+                ((request.noise_origin_y if request.noise_origin_y is not None else request.spatial_crop_y),
+                 (request.noise_origin_x if request.noise_origin_x is not None else request.spatial_crop_x))
+                if request.noise_origin_y is not None or request.spatial_crop_y is not None else None
             )
             config.spatial_noise_canvas = (
-                (request.noise_canvas_height, request.noise_canvas_width)
-                if request.noise_canvas_height is not None else None
+                ((request.noise_canvas_height if request.noise_canvas_height is not None else request.height),
+                 (request.noise_canvas_width if request.noise_canvas_width is not None else request.width))
+                if request.noise_canvas_height is not None or request.spatial_crop_y is not None else None
             )
             config.dtype = "fp16" if self.precision == "fp16" else "bf16"
             config.stream_ffn_chunk_tokens = options.ffn_chunk_tokens or None
@@ -235,7 +240,8 @@ class ModelHandle:
                     def callback(message):
                         interrupt()
                         progress(message)
-                    result = self._pipeline.infer(request, progress=callback, video_preset=options.video_preset)
+                    result = self._pipeline.infer(request, progress=callback,
+                        video_preset=options.video_preset, segment_writer=segment_writer)
                     result.metadata.update({"mode": self.mode, "precision": self.precision,
                                             "actual_backend": backend, "seed": int(seed)})
                     return result

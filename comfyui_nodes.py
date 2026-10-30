@@ -9,12 +9,16 @@ import tempfile
 import threading
 from pathlib import Path
 
+import numpy as np
+import torch
 import folder_paths
 import comfy.model_management as mm
 import comfy.utils
 
 from .flashvsr_plus.comfy_runtime import ModelHandle, Options, geometry, upscale_images
 from .flashvsr_plus.inference import InferenceRequest
+from .flashvsr_plus.inference.output import FloatSegmentSpool, IncrementalVideoWriter, mux_source_audio
+from .flashvsr_plus.inference.tiling import plan_tiles, stitch_tiles
 from .flashvsr_plus.weights import ROOT, FILES
 
 CATEGORY = "FlashVSR+"
@@ -86,7 +90,7 @@ class FlashVSRPlusOptions:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "spatial_tiling": ("BOOLEAN", {"default": False, "tooltip": "Run IMAGE inference on overlapping spatial tiles. VIDEO tile streaming is not enabled yet."}),
+            "spatial_tiling": ("BOOLEAN", {"default": False, "tooltip": "Run Frames or Tiny-decoder VIDEO inference on overlapping spatial tiles. VIDEO stores temporary float32 segments on disk."}),
             "spatial_tile_size": ("INT", {"default": 1024, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile size in output canvas pixels."}),
             "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 128, "tooltip": "Overlap in output canvas pixels; must be less than half the tile size."}),
             "spatial_blend": (["cosine", "linear", "gaussian"],),
@@ -180,10 +184,79 @@ class FlashVSRPlusUpscaleVideo:
             video.save_to(str(source), format=Types.VideoContainer.MP4,
                           codec=Types.VideoCodec.H264, crf=0, preset="ultrafast")
             mm.throw_exception_if_processing_interrupted()
-            result = model.infer(InferenceRequest(input_path=source, output_path=restored,
-                height=ch, width=cw, content_height=height, content_width=width,
-                max_frames=max_frames or None, fps=float(video.get_frame_rate())), seed=seed, options=options, progress=progress,
-                interrupt=mm.throw_exception_if_processing_interrupted)
+            fps = float(video.get_frame_rate())
+            if options.spatial_tiling:
+                if model.decoder != "tiny":
+                    raise ValueError("Spatial VIDEO tiling currently requires the Tiny decoder")
+                tiles = plan_tiles(ch, cw, options.spatial_tile_size, options.spatial_overlap)
+                if len(tiles) == 1:
+                    result = model.infer(InferenceRequest(input_path=source, output_path=restored,
+                        height=ch, width=cw, content_height=height, content_width=width,
+                        max_frames=max_frames or None, fps=fps), seed=seed, options=options,
+                        progress=progress, interrupt=mm.throw_exception_if_processing_interrupted)
+                else:
+                    spools, tile_results = [], []
+                    was_keep_loaded = model.keep_loaded
+                    model.keep_loaded = True
+                    try:
+                        for index, tile in enumerate(tiles):
+                            mm.throw_exception_if_processing_interrupted()
+                            progress(f"Spatial video tile {index + 1}/{len(tiles)}")
+                            spool = FloatSegmentSpool(Path(temporary)/f"tile_{index:04d}")
+                            request = InferenceRequest(input_path=source, height=ch, width=cw,
+                                content_height=height, content_width=width,
+                                max_frames=max_frames or None, fps=fps,
+                                spatial_crop_y=tile.y, spatial_crop_x=tile.x,
+                                spatial_crop_height=tile.height, spatial_crop_width=tile.width)
+                            tile_result = model.infer(request, seed=seed, options=options,
+                                progress=progress, interrupt=mm.throw_exception_if_processing_interrupted,
+                                segment_writer=spool)
+                            spools.append(spool.verify())
+                            tile_results.append(tile_result)
+                    finally:
+                        model.keep_loaded = was_keep_loaded
+                        if not was_keep_loaded:
+                            model.release()
+                    segment_count = len(spools[0]["segments"])
+                    if any(len(spool["segments"]) != segment_count for spool in spools):
+                        raise RuntimeError("Spatial tiles produced different decode segment counts")
+                    writer = IncrementalVideoWriter(restored, fps, preset=options.video_preset,
+                                                    crop_hw=(height, width))
+                    try:
+                        for segment_index in range(segment_count):
+                            mm.throw_exception_if_processing_interrupted()
+                            predictions = [torch.from_numpy(np.load(
+                                spool["segments"][segment_index]["path"], allow_pickle=False))
+                                for spool in spools]
+                            frame_counts = {value.shape[1] for value in predictions}
+                            if len(frame_counts) != 1:
+                                raise RuntimeError("Spatial tiles produced mismatched frame segments")
+                            merged = stitch_tiles(ch, cw, tiles, predictions,
+                                method=options.spatial_blend,
+                                sigma_scale=options.spatial_gaussian_sigma)
+                            writer.append(merged.unsqueeze(0))
+                        writer.close()
+                    except BaseException:
+                        writer.close()
+                        raise
+                    artifact = writer.verify()
+                    muxed = Path(output_temporary)/"restored_audio.mp4"
+                    mux_source_audio(restored, source, muxed)
+                    os.replace(muxed, restored)
+                    result = tile_results[-1]
+                    result.video = None
+                    result.output_path = str(restored)
+                    result.frames = artifact["frames"]
+                    result.metadata.update({"artifact": artifact, "spatial_tiling": True,
+                        "tile_count": len(tiles), "tile_size": options.spatial_tile_size,
+                        "overlap": options.spatial_overlap, "blend": options.spatial_blend,
+                        "gaussian_sigma": options.spatial_gaussian_sigma,
+                        "noise_policy": "global latent coordinates"})
+            else:
+                result = model.infer(InferenceRequest(input_path=source, output_path=restored,
+                    height=ch, width=cw, content_height=height, content_width=width,
+                    max_frames=max_frames or None, fps=fps), seed=seed, options=options, progress=progress,
+                    interrupt=mm.throw_exception_if_processing_interrupted)
             # Committing only a complete file prevents cancelled jobs leaving published partial output.
             with _OUTPUT_COMMIT_LOCK:
                 mm.throw_exception_if_processing_interrupted()

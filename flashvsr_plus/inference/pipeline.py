@@ -48,6 +48,7 @@ class FlashVSRInferencePipeline:
         *,
         progress: Callable[[str], None] | None = None,
         video_preset: str = "veryfast",
+        segment_writer=None,
         **kwargs,
     ) -> InferenceResult:
         request = request or InferenceRequest(**kwargs)
@@ -97,12 +98,12 @@ class FlashVSRInferencePipeline:
         if progress is not None:
             progress("Iterative input ready" if input_stream is not None else "Input preprocessing complete")
         incremental = (
-            request.output_path is not None
+            (request.output_path is not None or segment_writer is not None)
             and self.config.decoder.decode_every != "auto"
             and self.config.temporal_compression in (1, 2, 4)
         )
-        writer = None
-        if incremental:
+        writer = segment_writer if incremental else None
+        if incremental and writer is None:
             writer = IncrementalVideoWriter(
                 encoded_path, fps, preset=video_preset,
                 crop_hw=((request.content_height, request.content_width) if request.content_height else None)

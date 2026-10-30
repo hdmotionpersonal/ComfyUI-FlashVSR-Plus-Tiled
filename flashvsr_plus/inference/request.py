@@ -25,6 +25,10 @@ class InferenceRequest:
     noise_origin_x: int | None = None
     noise_canvas_height: int | None = None
     noise_canvas_width: int | None = None
+    spatial_crop_y: int | None = None
+    spatial_crop_x: int | None = None
+    spatial_crop_height: int | None = None
+    spatial_crop_width: int | None = None
 
     def validate(self) -> None:
         if (self.input_path is None) == (self.lq_video is None):
@@ -63,6 +67,19 @@ class InferenceRequest:
                 raise ValueError("spatial noise coordinates and canvas must be divisible by 8")
             if self.noise_origin_y + self.lq_video.shape[-2] > self.noise_canvas_height or self.noise_origin_x + self.lq_video.shape[-1] > self.noise_canvas_width:
                 raise ValueError("spatial noise tile exceeds its canvas")
+        crop_values = (self.spatial_crop_y, self.spatial_crop_x,
+                       self.spatial_crop_height, self.spatial_crop_width)
+        if any(value is not None for value in crop_values):
+            if any(not isinstance(value, Integral) or isinstance(value, bool) for value in crop_values):
+                raise ValueError("spatial crop requires integer coordinates and dimensions")
+            if min(crop_values) < 0 or not self.spatial_crop_height or not self.spatial_crop_width:
+                raise ValueError("spatial crop dimensions must be positive and coordinates nonnegative")
+            if self.height is None or self.width is None:
+                raise ValueError("spatial crop requires the full canvas dimensions")
+            if self.spatial_crop_y + self.spatial_crop_height > self.height or self.spatial_crop_x + self.spatial_crop_width > self.width:
+                raise ValueError("spatial crop exceeds the model canvas")
+            if self.spatial_crop_height % 128 or self.spatial_crop_width % 128:
+                raise ValueError("spatial crop dimensions must be divisible by 128")
 
 
 @dataclass

@@ -128,6 +128,35 @@ class IncrementalVideoWriter:
         }
 
 
+class FloatSegmentSpool:
+    """Store decoder segments losslessly on disk for bounded tiled-video merge."""
+
+    def __init__(self, directory):
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.segments: list[dict[str, Any]] = []
+        self.closed = False
+
+    def append(self, video, *, value_range="neg_one_to_one"):
+        if self.closed:
+            raise RuntimeError("cannot append to a closed segment spool")
+        if video.ndim != 5 or video.shape[0] != 1:
+            raise ValueError("Expected one segment [1,C,F,H,W]")
+        path = self.directory / f"segment_{len(self.segments):06d}.npy"
+        value = video[0].detach().to(device="cpu", dtype=torch.float32).contiguous().numpy()
+        np.save(path, value, allow_pickle=False)
+        self.segments.append({"path": str(path), "frames": int(value.shape[1])})
+
+    def close(self):
+        self.closed = True
+
+    def verify(self):
+        if not self.closed or not self.segments:
+            raise RuntimeError("segment spool is empty or was not closed")
+        return {"segments": list(self.segments),
+                "frames": sum(item["frames"] for item in self.segments)}
+
+
 def save_tensor_video(
     video: torch.Tensor,
     path: str | Path,

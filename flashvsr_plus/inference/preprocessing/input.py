@@ -88,6 +88,7 @@ def load_lq_video(
             raise ValueError("lq_video channel dimension must be 3")
         if request.height is not None:
             value = _prepare_tensor_input(value, request)
+        value = _crop_spatial_input(value, request)
         if request.max_frames is not None:
             value = value[:, :, : request.max_frames]
         return value.float(), float(request.fps or 24)
@@ -120,7 +121,7 @@ def load_lq_video(
     array = _pad_content(array, request)
     tensor = torch.from_numpy(np.ascontiguousarray(array)).permute(0, 3, 1, 2).float()
     tensor = tensor.div(127.5).sub(1.0).permute(1, 0, 2, 3).unsqueeze(0)
-    return tensor, fps
+    return _crop_spatial_input(tensor, request), fps
 
 
 def get_lq_video_fps(request: InferenceRequest) -> float:
@@ -168,6 +169,7 @@ def iter_lq_video(
             clip = value[:, :, start:start + window_size].float()
             if request.height is not None:
                 clip = _prepare_tensor_input(clip, request)
+            clip = _crop_spatial_input(clip, request)
             yield clip
             start += window_size
             window_size = chunk_frames
@@ -208,7 +210,8 @@ def _frames_to_tensor(frames, request, *, stream):
             resample=Image.Resampling.BICUBIC if stream else Image.Resampling.BILINEAR,
         )
     array = _pad_content(array, request)
-    return torch.from_numpy(np.ascontiguousarray(array)).permute(0, 3, 1, 2).float().div_(127.5).sub_(1.0).permute(1, 0, 2, 3).unsqueeze(0)
+    value = torch.from_numpy(np.ascontiguousarray(array)).permute(0, 3, 1, 2).float().div_(127.5).sub_(1.0).permute(1, 0, 2, 3).unsqueeze(0)
+    return _crop_spatial_input(value, request)
 
 
 def _prepare_tensor_input(value, request):
@@ -217,6 +220,13 @@ def _prepare_tensor_input(value, request):
     if request.content_height is not None:
         value = F.pad(value, (0, request.width-width, 0, request.height-height, 0, 0), mode="replicate")
     return value
+
+
+def _crop_spatial_input(value, request):
+    if request.spatial_crop_y is None:
+        return value
+    y, x = request.spatial_crop_y, request.spatial_crop_x
+    return value[..., y:y + request.spatial_crop_height, x:x + request.spatial_crop_width].contiguous()
 
 
 def _pad_content(array, request):
