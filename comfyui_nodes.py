@@ -254,7 +254,8 @@ class FlashVSRPlusUpscaleVideo:
                         "overlap": options.spatial_overlap, "blend": options.spatial_blend,
                         "gaussian_sigma": options.spatial_gaussian_sigma,
                         "temporary_spool_bytes": sum(spool["bytes"] for spool in spools),
-                        "noise_policy": "global latent coordinates"})
+                        "noise_policy": "global latent coordinates",
+                        "color_correction_scope": "per tile" if options.color_correction else "disabled"})
             else:
                 result = model.infer(InferenceRequest(input_path=source, output_path=restored,
                     height=ch, width=cw, content_height=height, content_width=width,

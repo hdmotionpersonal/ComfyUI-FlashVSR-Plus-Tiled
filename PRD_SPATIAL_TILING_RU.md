@@ -57,4 +57,4 @@
 
 ## Очерёдность
 
-Tile geometry и blend kernels → CPU проверки → IMAGE → GPU оценка методов и seed/noise → Tiny VIDEO → документация и выпуск. Подробная инженерная разбивка и источники: `../SPATIAL_TILING_PLAN_RU.md`.
+Tile geometry и blend kernels → CPU проверки → IMAGE → GPU оценка методов и seed/noise → Tiny VIDEO → документация и выпуск. Исходные методы смешивания сравниваются со SwinIR, Diffusers, MONAI, Mixture of Diffusers и 1038lab.

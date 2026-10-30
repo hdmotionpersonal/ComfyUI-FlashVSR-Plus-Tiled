@@ -23,7 +23,13 @@
 - VIDEO tiling поддерживает Tiny decoder с числовым `decode_every`, пишет float32 сегменты на временный диск и требует место пропорционально длине клипа и суммарной площади overlap. Wan VAE spatial path пока не поддержан.
 - одинаковый seed создаёт общее глобальное latent-шумовое окно для каждого временного блока; тайл берёт crop по координатам canvas.
 - Выход модели всё ещё может отличаться из-за ограниченного контекста внимания внутри каждого тайла.
-- Color correction в VIDEO пока выполняется для каждого тайла отдельно; при видимом цветовом стыке отключите её до глобального прохода коррекции.
+- Color correction в VIDEO выполняется для каждого тайла отдельно; если заметен цветовой стык, отключите её.
 - Tile-inference пока не проверялся на GPU и не считается готовым к выпуску. Перед использованием проверьте рабочую копию на копии workflow.
 
-PRD: [PRD_SPATIAL_TILING_RU.md](PRD_SPATIAL_TILING_RU.md). Полное исследование и порядок дальнейших работ находятся в родительском репозитории как `SPATIAL_TILING_PLAN_RU.md`.
+PRD: [PRD_SPATIAL_TILING_RU.md](PRD_SPATIAL_TILING_RU.md). Исходная сравнительная реализация — [ComfyUI-FlashVSR от 1038lab](https://github.com/1038lab/ComfyUI-FlashVSR).
+
+Для установки именно этой ветки в `custom_nodes`:
+
+```sh
+git clone --branch spatial-tiling https://github.com/hdmotionpersonal/Comfyui-Flashvsr-Plus-T8.git
+```
