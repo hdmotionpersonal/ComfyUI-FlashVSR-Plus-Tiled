@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flashvsr-plus-tiled"
 version = "0.2.0"
-description = "FlashVSR+ T8 video super-resolution nodes for ComfyUI with streaming VIDEO and INT8 ConvRot"
+description = "FlashVSR+ video and image upscaling for ComfyUI, with optional spatial DiT tiling for large outputs and limited VRAM. Set tile width, height, overlap, and cosine, linear, or Gaussian blending. Includes streamed VIDEO processing with audio/FPS preservation, optional tiled VAE decoding, and INT8 ConvRot. NVIDIA CUDA required."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
