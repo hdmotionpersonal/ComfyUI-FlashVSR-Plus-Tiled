@@ -18,7 +18,9 @@ import torch.nn.functional as F
 from .backends import diagnostics, resolve_backend, validate_attention_size
 from .inference import InferenceRequest, build_inference_pipeline
 from .inference.presets import stream_config_for_mode
+from .inference.postprocessing import WaveletColorCorrector
 from .inference.preprocessing.input import _resize_tensor_video
+from .inference.tiling import blend_weights, plan_tiles
 from .quantization import convert_checkpoint, read_quantization
 from .weights import ROOT, FILES, model_paths
 
@@ -27,6 +29,11 @@ log = logging.getLogger(__name__)
 
 @dataclasses.dataclass(frozen=True)
 class Options:
+    spatial_tiling: bool = False
+    spatial_tile_size: int = 1024
+    spatial_overlap: int = 128
+    spatial_blend: str = "cosine"
+    spatial_gaussian_sigma: float = 0.25
     temporal_compression: int = 4
     temporal_merge: str = "gaussian"
     temporal_gaussian_sigma: float = 1.0
@@ -63,6 +70,16 @@ class Options:
             raise ValueError("VAE overlap must be smaller than each tile dimension")
         if self.video_preset not in ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow"):
             raise ValueError("Invalid x264 encoding preset")
+        if type(self.spatial_tiling) is not bool:
+            raise TypeError("spatial_tiling must be a boolean")
+        if type(self.spatial_tile_size) is not int or self.spatial_tile_size < 256 or self.spatial_tile_size % 128:
+            raise ValueError("spatial_tile_size must be an integer >=256 and divisible by 128")
+        if type(self.spatial_overlap) is not int or self.spatial_overlap < 0 or self.spatial_overlap >= self.spatial_tile_size / 2:
+            raise ValueError("spatial_overlap must be nonnegative and smaller than half the tile")
+        if self.spatial_blend not in ("cosine", "linear", "gaussian"):
+            raise ValueError("spatial_blend must be cosine, linear or gaussian")
+        if not math.isfinite(self.spatial_gaussian_sigma) or not 0.05 <= self.spatial_gaussian_sigma <= 1.0:
+            raise ValueError("spatial_gaussian_sigma must be finite and between 0.05 and 1.0")
         return self
 
 
@@ -229,11 +246,64 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
     if not isinstance(images, torch.Tensor) or images.ndim != 4:
         raise ValueError("Expected a ComfyUI IMAGE batch")
     width, height, cw, ch = geometry(images.shape[2], images.shape[1], scale, width, height)
-    validate_attention_size(ch, cw, resolve_backend(model.attention, model.device))
+    options = (options or Options()).validate()
+    backend = resolve_backend(model.attention, model.device)
+    if options.spatial_tiling:
+        tiles = plan_tiles(ch, cw, options.spatial_tile_size, options.spatial_overlap)
+        validate_attention_size(options.spatial_tile_size, options.spatial_tile_size, backend)
+    else:
+        tiles = ()
+        validate_attention_size(ch, cw, backend)
     video = image_to_model(images, width, height, cw, ch)
-    request = InferenceRequest(lq_video=video, fps=float(fps))
-    result = model.infer(request, seed=seed, options=options, progress=progress, interrupt=interrupt)
-    output = result.video[0, :, :, :height, :width].permute(1, 2, 3, 0).to(
+    if not options.spatial_tiling or len(tiles) == 1:
+        request = InferenceRequest(lq_video=video, fps=float(fps))
+        result = model.infer(request, seed=seed, options=options, progress=progress, interrupt=interrupt)
+        stitched = result.video[0].float()
+    else:
+        accum = torch.zeros((3, video.shape[2], ch, cw), dtype=torch.float32)
+        weights = torch.zeros((1, 1, ch, cw), dtype=torch.float32)
+        was_keep_loaded = model.keep_loaded
+        model.keep_loaded = True
+        result = None
+        try:
+            for index, tile in enumerate(tiles):
+                if interrupt is not None:
+                    interrupt()
+                if progress is not None:
+                    progress(f"Spatial tile {index + 1}/{len(tiles)}")
+                tile_video = video[..., tile.y:tile.y + tile.height, tile.x:tile.x + tile.width]
+                tile_result = model.infer(
+                    InferenceRequest(lq_video=tile_video, fps=float(fps)), seed=seed,
+                    options=dataclasses.replace(options, color_correction=False),
+                    progress=progress, interrupt=interrupt,
+                )
+                prediction = tile_result.video[0].float()
+                weight = blend_weights(tile, ch, cw, tiles, options.spatial_blend,
+                                       options.spatial_gaussian_sigma)
+                accum[..., tile.y:tile.y + tile.height, tile.x:tile.x + tile.width] += prediction * weight
+                weights[..., tile.y:tile.y + tile.height, tile.x:tile.x + tile.width] += weight
+                result = tile_result
+                del prediction, tile_video, tile_result
+        finally:
+            model.keep_loaded = was_keep_loaded
+            if not was_keep_loaded:
+                model.release()
+        if torch.any(weights <= 0):
+            raise RuntimeError("Spatial tile plan left uncovered pixels")
+        stitched = accum / weights
+        if options.color_correction:
+            corrector = WaveletColorCorrector(
+                levels=options.color_correction_levels,
+                chunk_size=options.color_correction_chunk_size,
+            )
+            stitched = corrector(stitched.unsqueeze(0), video[:, :, :stitched.shape[1]])[0]
+        result.metadata.update({"spatial_tiling": True, "tile_count": len(tiles),
+                                "tile_size": options.spatial_tile_size,
+                                "overlap": options.spatial_overlap,
+                                "blend": options.spatial_blend,
+                                "gaussian_sigma": options.spatial_gaussian_sigma,
+                                "noise_policy": "same seed per tile; spatially aligned noise not guaranteed"})
+    output = stitched[:, :, :height, :width].permute(1, 2, 3, 0).to(
         dtype=torch.float32, copy=True, memory_format=torch.contiguous_format).add_(1).div_(2).clamp_(0, 1)
     result.metadata.update({"width": width, "height": height, "canvas_width": cw, "canvas_height": ch})
     return output, result

@@ -86,6 +86,11 @@ class FlashVSRPlusOptions:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
+            "spatial_tiling": ("BOOLEAN", {"default": False, "tooltip": "Run IMAGE inference on overlapping spatial tiles. VIDEO tile streaming is not enabled yet."}),
+            "spatial_tile_size": ("INT", {"default": 1024, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile size in output canvas pixels."}),
+            "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 128, "tooltip": "Overlap in output canvas pixels; must be less than half the tile size."}),
+            "spatial_blend": (["cosine", "linear", "gaussian"],),
+            "spatial_gaussian_sigma": ("FLOAT", {"default": .25, "min": .05, "max": 1., "step": .05}),
             "temporal_compression": ([4, 2, 1],),
             "temporal_merge": (["gaussian", "first"],),
             "temporal_gaussian_sigma": ("FLOAT", {"default": 1., "min": .01, "max": 10., "step": .05}),

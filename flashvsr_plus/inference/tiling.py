@@ -96,3 +96,25 @@ def overlap_for(tile: Tile, tiles: tuple[Tile, ...], axis: int, side: str) -> in
         if side == "fall" and other_start < stop < other_stop:
             overlaps.append(stop - other_start)
     return max(overlaps, default=0)
+
+
+def stitch_tiles(canvas_height: int, canvas_width: int, tiles: tuple[Tile, ...],
+                 predictions: list[torch.Tensor], *, method: str = "cosine",
+                 sigma_scale: float = 0.25) -> torch.Tensor:
+    """Blend [C,F,H,W] CPU predictions into one [C,F,H,W] canvas."""
+    if len(tiles) != len(predictions) or not tiles:
+        raise ValueError("each planned tile must have exactly one prediction")
+    first = predictions[0]
+    if first.ndim != 4:
+        raise ValueError("tile predictions must be [C,F,H,W]")
+    output = torch.zeros((first.shape[0], first.shape[1], canvas_height, canvas_width), dtype=torch.float32)
+    weights = torch.zeros((1, 1, canvas_height, canvas_width), dtype=torch.float32)
+    for tile, prediction in zip(tiles, predictions):
+        if prediction.shape != (first.shape[0], first.shape[1], tile.height, tile.width):
+            raise ValueError("tile prediction shape does not match its planned rectangle")
+        weight = blend_weights(tile, canvas_height, canvas_width, tiles, method, sigma_scale)
+        output[..., tile.y:tile.y + tile.height, tile.x:tile.x + tile.width] += prediction.float() * weight
+        weights[..., tile.y:tile.y + tile.height, tile.x:tile.x + tile.width] += weight
+    if torch.any(weights <= 0):
+        raise RuntimeError("tile plan left uncovered output pixels")
+    return output / weights
