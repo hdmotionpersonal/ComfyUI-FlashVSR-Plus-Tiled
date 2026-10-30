@@ -37,10 +37,11 @@ if (ROOT/"ckpts").is_dir():
 def _progress():
     bar = comfy.utils.ProgressBar(100)
     chunks = 0
-    def update(message, overall_fraction=None):
+    def update(message, overall_fraction=None, *, quiet=False):
         nonlocal chunks
         mm.throw_exception_if_processing_interrupted()
-        logging.info("[FlashVSR+] %s", message)
+        if not quiet:
+            logging.info("[FlashVSR+] %s", message)
         if overall_fraction is not None:
             bar.update_absolute(round(95 * min(1.0, max(0.0, overall_fraction))), 100)
             return
@@ -86,7 +87,8 @@ def _tile_progress(index, count, tile, progress, expected_chunks=None):
             current = value
         if progress is not None:
             progress(f"Spatial {label}: {message}",
-                     overall_fraction=(index + current / 100) / count)
+                     overall_fraction=(index + current / 100) / count,
+                     quiet=message.startswith("DiT chunk"))
 
     try:
         if progress is not None:
