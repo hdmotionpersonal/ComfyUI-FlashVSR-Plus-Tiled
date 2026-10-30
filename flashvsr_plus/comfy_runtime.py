@@ -51,7 +51,7 @@ class Options:
     vae_tile_width: int = 52
     vae_overlap: int = 15
     video_preset: str = "veryfast"
-    spatial_tile_width: int = 0
+    spatial_tile_width: int = 512
 
     def validate(self):
         if self.temporal_compression not in (1, 2, 4):

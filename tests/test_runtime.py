@@ -211,6 +211,7 @@ class GeometryTests(unittest.TestCase):
 
     def test_options_and_vae_validation(self):
         Options().validate()
+        self.assertEqual(Options().spatial_tile_width, 512)
         Options(spatial_tile_height=384, spatial_tile_width=512, spatial_overlap=128).validate()
         for option in (Options(decode_every=3), Options(temporal_compression=3),
                        Options(vae_overlap=30), Options(spatial_tile_width=500),

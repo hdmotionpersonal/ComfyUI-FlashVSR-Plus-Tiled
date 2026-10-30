@@ -167,7 +167,7 @@ class FlashVSRPlusOptions:
             "vae_tile_width": ("INT", {"default": 52, "min": 4, "max": 256}),
             "vae_overlap": ("INT", {"default": 15, "min": 0, "max": 128}),
             "video_preset": (["veryfast", "ultrafast", "superfast", "faster", "fast", "medium", "slow"],),
-            "spatial_tile_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 128, "tooltip": "Tile width in output canvas pixels. 0 uses the tile height; set a value to control width independently."}),
+            "spatial_tile_width": ("INT", {"default": 512, "min": 0, "max": 8192, "step": 128, "tooltip": "Tile width in output canvas pixels. Set independently from height. 0 follows tile height for older workflows."}),
         }}
     RETURN_TYPES = (OPTIONS_TYPE,)
     RETURN_NAMES = ("options",)

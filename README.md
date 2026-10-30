@@ -46,7 +46,7 @@ Before tiled inference, the ComfyUI console reports the tile size, final output 
 | --- | ---: | --- |
 | `spatial_tiling` | `false` | Enable spatial tile inference. |
 | `spatial_tile_height` | `512` | Tile height in output pixels; must be a multiple of 128. |
-| `spatial_tile_width` | `0` | Tile width in output pixels; `0` follows the height, otherwise set a multiple of 128. |
+| `spatial_tile_width` | `512` | Tile width in output pixels, independently adjustable from height; set a multiple of 128. `0` follows the height for older workflows. |
 | `spatial_overlap` | `128` | Shared output pixels on both axes; must be a multiple of 128 and less than half of both tile dimensions. |
 | `spatial_blend` | `cosine` | `cosine`, `linear`, or `gaussian`. |
 | `spatial_gaussian_sigma` | `0.25` | Controls the Gaussian blend profile. |
