@@ -19,7 +19,7 @@ Native ComfyUI VIDEO and IMAGE super-resolution powered by [FlashVSR+](https://g
 
 ## Video outputs
 
-The output order is `video`, `info`, `images`, `audio`. The original video and info port indices are preserved for existing connections.
+The output order is `video`, `info`, `images`, `audio`, `fps`. The `fps` output reports the output video frame rate. The original video and info port indices are preserved for existing connections.
 
 `images` contains the full upscaled frame batch, decoded from the saved output video. It is materialized only when that port is connected in the submitted graph. A float32 RGB batch needs approximately 12 bytes per pixel per frame: 192 frames at 3840×2160 alone need about 17.8 GiB of host RAM, with additional decoding overhead. Keep this port disconnected when you only need a video file.
 

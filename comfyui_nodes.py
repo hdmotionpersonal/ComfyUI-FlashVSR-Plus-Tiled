@@ -168,11 +168,11 @@ class FlashVSRPlusModelLoader:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "mode": (["turbo", "base", "v1"],),
-            "precision": (["bf16", "int8_convrot", "fp16"],),
-            "attention": (["auto", "triton_block_sparse", "block_sparse", "sdpa"],),
-            "decoder": (["tiny", "vae"],),
-            "auto_download": ("BOOLEAN", {"default": True}),
+            "mode": (["turbo", "base", "v1"], {"tooltip": "Choose the FlashVSR+ model variant. Turbo prioritizes speed; Base and V1 use their corresponding official weights."}),
+            "precision": (["bf16", "int8_convrot", "fp16"], {"tooltip": "Choose DiT weight precision. INT8 ConvRot reduces weight memory; BF16 or FP16 use floating-point weights."}),
+            "attention": (["auto", "triton_block_sparse", "block_sparse", "sdpa"], {"tooltip": "Select the attention backend. Auto picks an available supported backend; SDPA is the portable fallback."}),
+            "decoder": (["tiny", "vae"], {"tooltip": "Choose the output decoder. Tiny supports incremental long-video decoding; Wan VAE decodes the full clip."}),
+            "auto_download": ("BOOLEAN", {"default": True, "tooltip": "Download missing model files automatically into the configured FlashVSR+ model folder."}),
             "keep_loaded": ("BOOLEAN", {"default": False, "tooltip": "Keep weights in CPU RAM between requests. GPU memory is released after each request."}),
             "model_directory": ("STRING", {"default": "", "tooltip": "Optional model root; blank discovers models/flashvsr_plus and the bundled ckpts folder."}),
         }}
@@ -209,25 +209,25 @@ class FlashVSRPlusOptions:
             "spatial_tile_height": ("INT", {"default": 512, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile height in output pixels."}),
             "spatial_tile_width": ("INT", {"default": 512, "min": 0, "max": 8192, "step": 128, "tooltip": "Tile width in output pixels. Set independently from height; 0 follows tile height for older workflows."}),
             "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 8, "tooltip": "Overlap in output pixels; step 8, less than half of both tile dimensions. Tile dimensions stay multiples of 128."}),
-            "spatial_blend": (["cosine", "linear", "gaussian"],),
-            "spatial_gaussian_sigma": ("FLOAT", {"default": .25, "min": .05, "max": 1., "step": .05}),
-            "temporal_compression": ([4, 2, 1],),
-            "temporal_merge": (["gaussian", "first"],),
-            "temporal_gaussian_sigma": ("FLOAT", {"default": 1., "min": .01, "max": 10., "step": .05}),
+            "spatial_blend": (["cosine", "linear", "gaussian"], {"tooltip": "Choose how overlapping spatial tiles are feathered together."}),
+            "spatial_gaussian_sigma": ("FLOAT", {"default": .25, "min": .05, "max": 1., "step": .05, "tooltip": "Set the Gaussian falloff width for gaussian spatial blending. Lower values concentrate weight near tile centers."}),
+            "temporal_compression": ([4, 2, 1], {"tooltip": "Set effective temporal compression. Lower values process more repeated temporal samples and cost more; final frame count stays unchanged."}),
+            "temporal_merge": (["gaussian", "first"], {"tooltip": "For temporal compression 1 or 2, choose Gaussian averaging or the first decoded sample in each repeated group."}),
+            "temporal_gaussian_sigma": ("FLOAT", {"default": 1., "min": .01, "max": 10., "step": .05, "tooltip": "Set the Gaussian averaging width for temporally merged samples."}),
             "decode_every_frames": ("INT", {"default": 112, "min": 0, "max": 16384, "step": 4, "tooltip": "Output video-frame interval for Tiny incremental decoding. Must be divisible by 4 × temporal_compression. 0=auto/full clip; spatial VIDEO tiling requires a positive interval."}),
-            "cache_offload_mode": (["auto", "never", "always"],),
-            "offload_original_cache": ("BOOLEAN", {"default": False}),
-            "tiny_decoder_mode": (["auto", "serial", "parallel"],),
-            "tiny_decoder_channels_last": ("BOOLEAN", {"default": True}),
-            "color_correction": ("BOOLEAN", {"default": False}),
-            "color_correction_levels": ("INT", {"default": 5, "min": 1, "max": 8}),
-            "color_correction_chunk_size": ("INT", {"default": 16, "min": 1, "max": 128}),
-            "ffn_chunk_tokens": ("INT", {"default": 8192, "min": 0, "max": 262144, "step": 1024}),
-            "vae_tiled": ("BOOLEAN", {"default": True}),
+            "cache_offload_mode": (["auto", "never", "always"], {"tooltip": "Choose when to offload the DiT KV cache from GPU memory. Auto estimates memory and selects a best-effort policy."}),
+            "offload_original_cache": ("BOOLEAN", {"default": False, "tooltip": "Also offload the original input cache. This can save VRAM at the cost of extra transfers."}),
+            "tiny_decoder_mode": (["auto", "serial", "parallel"], {"tooltip": "Choose Tiny decoder execution mode. Auto selects a mode; serial uses less memory, parallel may be faster."}),
+            "tiny_decoder_channels_last": ("BOOLEAN", {"default": True, "tooltip": "Use channels-last memory layout in the Tiny decoder where supported."}),
+            "color_correction": ("BOOLEAN", {"default": False, "tooltip": "Match output colors to the low-quality input reference. In spatial video tiling this is applied per tile."}),
+            "color_correction_levels": ("INT", {"default": 5, "min": 1, "max": 8, "tooltip": "Set the number of color-correction pyramid levels."}),
+            "color_correction_chunk_size": ("INT", {"default": 16, "min": 1, "max": 128, "tooltip": "Set the number of frames processed together during color correction."}),
+            "ffn_chunk_tokens": ("INT", {"default": 8192, "min": 0, "max": 262144, "step": 1024, "tooltip": "Limit feed-forward tokens per chunk to reduce peak VRAM. Zero disables chunking."}),
+            "vae_tiled": ("BOOLEAN", {"default": True, "tooltip": "Decode the Wan VAE in spatial tiles to reduce peak VRAM."}),
             "vae_tile_height": ("INT", {"default": 240, "min": 32, "max": 2048, "step": 8, "tooltip": "VAE decoder tile height in output pixels (Wan VAE uses 8 latent cells per pixel block)."}),
             "vae_tile_width": ("INT", {"default": 416, "min": 32, "max": 2048, "step": 8, "tooltip": "VAE decoder tile width in output pixels (Wan VAE uses 8 latent cells per pixel block)."}),
-            "vae_overlap": ("INT", {"default": 120, "min": 0, "max": 1024, "step": 8, "tooltip": "Overlap between VAE decoder tiles in output pixels."}),
-            "video_preset": (["veryfast", "ultrafast", "superfast", "faster", "fast", "medium", "slow"],),
+            "vae_overlap": ("INT", {"default": 120, "min": 0, "max": 1024, "step": 8, "tooltip": "Set overlap between Wan VAE decoder tiles in output pixels."}),
+            "video_preset": (["veryfast", "ultrafast", "superfast", "faster", "fast", "medium", "slow"], {"tooltip": "Choose the H.264 encoding speed and compression trade-off for the saved video."}),
         }}
     RETURN_TYPES = (OPTIONS_TYPE,)
     RETURN_NAMES = ("options",)
@@ -259,12 +259,12 @@ class FlashVSRPlusUpscaleFrames:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "model": (MODEL_TYPE,), "images": ("IMAGE",),
-            "scale": ("FLOAT", {"default": 4., "min": .25, "max": 16., "step": .25}),
+            "model": (MODEL_TYPE, {"tooltip": "Model handle from FlashVSR+ Tiled Model Loader."}), "images": ("IMAGE", {"tooltip": "Input RGB image or batch of frames in ComfyUI IMAGE format."}),
+            "scale": ("FLOAT", {"default": 4., "min": .25, "max": 16., "step": .25, "tooltip": "Set the enlargement factor. Explicit width or height can override the corresponding scaled dimension."}),
             "width": ("INT", {"default": 0, "min": 0, "max": 16384, "tooltip": "0 uses scale or preserves aspect ratio from height."}),
-            "height": ("INT", {"default": 0, "min": 0, "max": 16384}),
-            "seed": ("INT", {"default": 1, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
-        }, "optional": {"options": (OPTIONS_TYPE,)}}
+            "height": ("INT", {"default": 0, "min": 0, "max": 16384, "tooltip": "Optional target output height in pixels. Zero derives it from scale or width while preserving aspect ratio."}),
+            "seed": ("INT", {"default": 1, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "Set the random seed used for deterministic model noise."}),
+        }, "optional": {"options": (OPTIONS_TYPE, {"tooltip": "Optional FlashVSR+ Tiled processing and memory settings."})}}
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("images", "info")
     FUNCTION = "upscale"
@@ -285,24 +285,25 @@ class FlashVSRPlusUpscaleVideo:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "model": (MODEL_TYPE,), "video": ("VIDEO",),
-            "scale": ("FLOAT", {"default": 4., "min": .25, "max": 16., "step": .25}),
-            "width": ("INT", {"default": 0, "min": 0, "max": 16384}),
-            "height": ("INT", {"default": 0, "min": 0, "max": 16384}),
-            "seed": ("INT", {"default": 1, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
-            "max_frames": ("INT", {"default": 0, "min": 0, "max": 10000000}),
-            "filename_prefix": ("STRING", {"default": "FlashVSRPlus/FlashVSRPlus"}),
-        }, "optional": {"options": (OPTIONS_TYPE,)},
+            "model": (MODEL_TYPE, {"tooltip": "Model handle from FlashVSR+ Tiled Model Loader."}), "video": ("VIDEO", {"tooltip": "ComfyUI VIDEO input; its trim, crop, frame rate, and audio are respected."}),
+            "scale": ("FLOAT", {"default": 4., "min": .25, "max": 16., "step": .25, "tooltip": "Set the enlargement factor. Explicit width or height can override the corresponding scaled dimension."}),
+            "width": ("INT", {"default": 0, "min": 0, "max": 16384, "tooltip": "Optional target output width in pixels. Zero derives it from scale or height while preserving aspect ratio."}),
+            "height": ("INT", {"default": 0, "min": 0, "max": 16384, "tooltip": "Optional target output height in pixels. Zero derives it from scale or width while preserving aspect ratio."}),
+            "seed": ("INT", {"default": 1, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "Set the random seed used for deterministic model noise."}),
+            "max_frames": ("INT", {"default": 0, "min": 0, "max": 10000000, "tooltip": "Limit processing to this many input frames. Zero processes the full active video range."}),
+            "filename_prefix": ("STRING", {"default": "FlashVSRPlus/FlashVSRPlus", "tooltip": "Output folder and filename prefix for the encoded video."}),
+        }, "optional": {"options": (OPTIONS_TYPE, {"tooltip": "Optional FlashVSR+ Tiled processing and memory settings."})},
             "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"}}
     # Preserve the original output indices for saved workflows; append the
     # component outputs so existing video/info connections remain valid.
-    RETURN_TYPES = ("VIDEO", "STRING", "IMAGE", "AUDIO")
-    RETURN_NAMES = ("video", "info", "images", "audio")
+    RETURN_TYPES = ("VIDEO", "STRING", "IMAGE", "AUDIO", "FLOAT")
+    RETURN_NAMES = ("video", "info", "images", "audio", "fps")
     OUTPUT_TOOLTIPS = (
         "The upscaled video file.",
         "JSON metadata for the upscaled video.",
         "All upscaled frames as an IMAGE batch. Connecting this output loads the full batch into host RAM.",
         "The audio waveform preserved from the input video, or None when no audio track exists.",
+        "Frame rate of the upscaled output video in frames per second.",
     )
     FUNCTION = "upscale"
     CATEGORY = CATEGORY
@@ -459,7 +460,7 @@ class FlashVSRPlusUpscaleVideo:
                                 "audio_output_connected": want_audio,
                                 "audio_output_available": audio_output is not None})
         return (output_video, json.dumps(result.metadata, ensure_ascii=False, indent=2),
-                image_output, audio_output)
+                image_output, audio_output, fps)
 
 
 NODE_CLASS_MAPPINGS = {
