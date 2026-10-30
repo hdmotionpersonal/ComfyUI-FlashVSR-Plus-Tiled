@@ -29,7 +29,7 @@
 
 Локальный прогон на RTX 4070 Ti SUPER: V1 INT8 + Tiny + SDPA, `demo1.mp4` (400×224, 33 кадра, 24 FPS), целевой размер 1600×896. VIDEO и IMAGE прошли с 8 тайлами 512 px и overlap 128 px; VIDEO сохранил 33 кадра, 24 FPS и AAC audio. Первый float32 spool этого короткого ролика занял около 830 MB, поэтому сегменты spool теперь хранятся в float16 и расширяются в float32 перед смешиванием. Все три blend режима точно сохраняют константное поле в CPU-проверке.
 
-Native BSA в этой ComfyUI-среде не установлен. Triton backend импортировался, но Windows JIT-драйвер не собрал вспомогательный модуль. На этом GPU smoke check использовался SDPA; большие SDPA tiles могут не пройти memory preflight, уменьшите tile size.
+Native BSA в этой ComfyUI-среде не установлен. Triton backend импортировался, но Windows JIT-драйвер не собрал вспомогательный модуль; режим `auto` перешёл на SDPA. Большие SDPA tiles могут не пройти memory preflight, уменьшите tile size.
 - Tile-inference пока не проверялся на GPU и не считается готовым к выпуску. Перед использованием проверьте рабочую копию на копии workflow.
 
 PRD: [PRD_SPATIAL_TILING_RU.md](PRD_SPATIAL_TILING_RU.md). Исходная сравнительная реализация — [ComfyUI-FlashVSR от 1038lab](https://github.com/1038lab/ComfyUI-FlashVSR).

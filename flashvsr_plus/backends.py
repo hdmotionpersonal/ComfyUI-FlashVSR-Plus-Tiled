@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import re
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 
 import torch
 
@@ -15,6 +16,7 @@ class BackendStatus:
     reason: str
 
 
+@lru_cache(maxsize=None)
 def backend_status(device: str = "cuda:0") -> list[BackendStatus]:
     target = torch.device(device)
     if target.type != "cuda" or not torch.cuda.is_available():
@@ -28,7 +30,8 @@ def backend_status(device: str = "cuda:0") -> list[BackendStatus]:
         if sm[0] >= 12 and version < (3, 3):
             raise RuntimeError("SM120 requires Triton >=3.3; match Triton to your PyTorch version")
         importlib.import_module(__package__ + ".attention_ops")
-        result.append(BackendStatus("triton_block_sparse", True, f"bundled official operator; Triton {triton.__version__}"))
+        target = importlib.import_module("triton.runtime.driver").driver.active.get_current_target()
+        result.append(BackendStatus("triton_block_sparse", True, f"bundled official operator; Triton {triton.__version__} on {target}"))
     except (ImportError, OSError, RuntimeError) as exc:
         result.append(BackendStatus("triton_block_sparse", False, str(exc)))
     try:
