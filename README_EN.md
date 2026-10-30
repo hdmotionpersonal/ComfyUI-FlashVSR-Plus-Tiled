@@ -13,8 +13,8 @@ Search for **FlashVSR+ T8** in **ComfyUI Manager**, install, and restart. Regist
 For manual installation, run from the ComfyUI directory and install dependencies with **ComfyUI's Python**:
 
 ```sh
-git clone https://github.com/T8mars/Comfyui-Flashvsr-Plus-T8.git custom_nodes/Comfyui-Flashvsr-Plus-T8
-python -m pip install -r custom_nodes/Comfyui-Flashvsr-Plus-T8/requirements.txt
+git clone --branch spatial-tiling https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled.git custom_nodes/ComfyUI-FlashVSR-Plus-Tiled
+python -m pip install -r custom_nodes/ComfyUI-FlashVSR-Plus-Tiled/requirements.txt
 ```
 
 The dependency list contains neither PyTorch nor transformers and does not replace them. `transformers==4.57.1` was tested in an isolated environment. On Windows, match Triton to your installed PyTorch; the tested combination is PyTorch `2.7.0+cu128` with `triton-windows==3.3.1.post21`.

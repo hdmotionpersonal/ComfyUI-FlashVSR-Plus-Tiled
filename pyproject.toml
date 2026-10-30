@@ -23,10 +23,10 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/hdmotionpersonal/Comfyui-Flashvsr-Plus-T8"
-Documentation = "https://github.com/hdmotionpersonal/Comfyui-Flashvsr-Plus-T8/blob/spatial-tiling/README_SPATIAL_TILING_RU.md"
-"Bug Tracker" = "https://github.com/hdmotionpersonal/Comfyui-Flashvsr-Plus-T8/issues"
-Issues = "https://github.com/hdmotionpersonal/Comfyui-Flashvsr-Plus-T8/issues"
+Repository = "https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled"
+Documentation = "https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled/blob/spatial-tiling/README_SPATIAL_TILING_RU.md"
+"Bug Tracker" = "https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled/issues"
+Issues = "https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled/issues"
 Models = "https://huggingface.co/t8star/Flashvsr-Plus-Comfy"
 
 [tool.comfy]

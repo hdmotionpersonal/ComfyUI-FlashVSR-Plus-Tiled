@@ -37,5 +37,5 @@ PRD: [PRD_SPATIAL_TILING_RU.md](PRD_SPATIAL_TILING_RU.md). Исходная ср
 Для установки именно этой ветки в `custom_nodes`:
 
 ```sh
-git clone --branch spatial-tiling https://github.com/hdmotionpersonal/Comfyui-Flashvsr-Plus-T8.git
+git clone --branch spatial-tiling https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled.git
 ```
