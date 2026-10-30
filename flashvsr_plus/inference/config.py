@@ -127,6 +127,9 @@ class InferenceConfig:
     # Fixed released-model geometry; these are not architecture overrides.
     latent_channels: int = 16
     spatial_downsample: int = 8
+    # Optional output-space crop of a globally seeded latent noise field.
+    spatial_noise_origin: tuple[int, int] | None = None
+    spatial_noise_canvas: tuple[int, int] | None = None
     temporal_compression: int = 4
     temporal_merge: str = "gaussian"
     temporal_gaussian_sigma: float = 1.0

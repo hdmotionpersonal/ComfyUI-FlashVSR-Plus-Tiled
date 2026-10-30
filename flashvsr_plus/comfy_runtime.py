@@ -194,6 +194,14 @@ class ModelHandle:
                 temporal_gaussian_sigma=options.temporal_gaussian_sigma, attn_kernel=backend,
                 color_correction=options.color_correction, color_correction_levels=options.color_correction_levels,
                 color_correction_chunk_size=options.color_correction_chunk_size)
+            config.spatial_noise_origin = (
+                (request.noise_origin_y, request.noise_origin_x)
+                if request.noise_origin_y is not None else None
+            )
+            config.spatial_noise_canvas = (
+                (request.noise_canvas_height, request.noise_canvas_width)
+                if request.noise_canvas_height is not None else None
+            )
             config.dtype = "fp16" if self.precision == "fp16" else "bf16"
             config.stream_ffn_chunk_tokens = options.ffn_chunk_tokens or None
             config.decoder.kind, config.decoder.tiled = self.decoder, options.vae_tiled
@@ -202,6 +210,8 @@ class ModelHandle:
             config.validate()
             key = dataclasses.asdict(config)
             key.pop("seed")
+            key.pop("spatial_noise_origin")
+            key.pop("spatial_noise_canvas")
             try:
                 # Cooperate with the host before loading our private pipeline.
                 try:
@@ -273,7 +283,9 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
                     progress(f"Spatial tile {index + 1}/{len(tiles)}")
                 tile_video = video[..., tile.y:tile.y + tile.height, tile.x:tile.x + tile.width]
                 tile_result = model.infer(
-                    InferenceRequest(lq_video=tile_video, fps=float(fps)), seed=seed,
+                    InferenceRequest(lq_video=tile_video, fps=float(fps),
+                                     noise_origin_y=tile.y, noise_origin_x=tile.x,
+                                     noise_canvas_height=ch, noise_canvas_width=cw), seed=seed,
                     options=dataclasses.replace(options, color_correction=False),
                     progress=progress, interrupt=interrupt,
                 )

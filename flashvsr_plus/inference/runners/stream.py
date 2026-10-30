@@ -74,12 +74,29 @@ class StreamRunner(BaseRunner):
         dtype: torch.dtype,
     ) -> torch.Tensor:
         batch, _, _, height, width = lq_video.shape
+        origin = getattr(self.config, "spatial_noise_origin", None)
+        canvas = getattr(self.config, "spatial_noise_canvas", None)
+        latent_height = height // self.config.spatial_downsample
+        latent_width = width // self.config.spatial_downsample
+        if origin is not None and canvas is not None:
+            full_height = canvas[0] // self.config.spatial_downsample
+            full_width = canvas[1] // self.config.spatial_downsample
+            y = origin[0] // self.config.spatial_downsample
+            x = origin[1] // self.config.spatial_downsample
+            if y + latent_height > full_height or x + latent_width > full_width:
+                raise ValueError("tile latent noise crop exceeds the global canvas")
+            noise = torch.randn(
+                batch, self.config.latent_channels, latent_frames,
+                full_height, full_width,
+                generator=generator, device=device, dtype=dtype,
+            )
+            return noise[..., y:y + latent_height, x:x + latent_width].contiguous()
         return torch.randn(
             batch,
             self.config.latent_channels,
             latent_frames,
-            height // self.config.spatial_downsample,
-            width // self.config.spatial_downsample,
+            latent_height,
+            latent_width,
             generator=generator,
             device=device,
             dtype=dtype,

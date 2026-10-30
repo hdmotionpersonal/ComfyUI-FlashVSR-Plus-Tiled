@@ -21,6 +21,10 @@ class InferenceRequest:
     content_width: int | None = None
     max_frames: int | None = None
     fps: float | None = None
+    noise_origin_y: int | None = None
+    noise_origin_x: int | None = None
+    noise_canvas_height: int | None = None
+    noise_canvas_width: int | None = None
 
     def validate(self) -> None:
         if (self.input_path is None) == (self.lq_video is None):
@@ -45,6 +49,20 @@ class InferenceRequest:
                 raise ValueError("Content dimensions must fit the model canvas")
         if (self.height is None) != (self.width is None):
             raise ValueError("height and width must be provided together")
+        noise_values = (self.noise_origin_y, self.noise_origin_x,
+                        self.noise_canvas_height, self.noise_canvas_width)
+        if any(value is not None for value in noise_values):
+            if any(not isinstance(value, Integral) or isinstance(value, bool) or value < 0
+                   for value in noise_values):
+                raise ValueError("spatial noise coordinates must be nonnegative integers")
+            if not self.noise_canvas_height or not self.noise_canvas_width:
+                raise ValueError("spatial noise canvas dimensions must be positive")
+            if self.lq_video is None:
+                raise ValueError("spatial noise coordinates require tensor video input")
+            if self.noise_origin_y % 8 or self.noise_origin_x % 8 or self.noise_canvas_height % 8 or self.noise_canvas_width % 8:
+                raise ValueError("spatial noise coordinates and canvas must be divisible by 8")
+            if self.noise_origin_y + self.lq_video.shape[-2] > self.noise_canvas_height or self.noise_origin_x + self.lq_video.shape[-1] > self.noise_canvas_width:
+                raise ValueError("spatial noise tile exceeds its canvas")
 
 
 @dataclass
