@@ -67,7 +67,7 @@
       ],
       "properties": {
         "Node name for S&R": "FlashVSRPlusTiledModelLoader",
-        "cnr_id": "flashvsr-plus-t8",
+        "cnr_id": "flashvsr-plus-tiled",
         "ver": "0.2.0"
       },
       "widgets_values": [
@@ -193,7 +193,7 @@
       ],
       "properties": {
         "Node name for S&R": "FlashVSRPlusTiledUpscaleFrames",
-        "cnr_id": "flashvsr-plus-t8",
+        "cnr_id": "flashvsr-plus-tiled",
         "ver": "0.2.0"
       },
       "widgets_values": [

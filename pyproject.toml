@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flashvsr-plus-t8"
+name = "flashvsr-plus-tiled"
 version = "0.2.0"
 description = "FlashVSR+ T8 video super-resolution nodes for ComfyUI with streaming VIDEO and INT8 ConvRot"
 readme = "README.md"
