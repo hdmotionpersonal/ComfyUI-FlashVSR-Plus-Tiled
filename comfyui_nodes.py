@@ -7,10 +7,12 @@ import os
 import re
 import tempfile
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 import torch
+from tqdm import tqdm
 import folder_paths
 import comfy.model_management as mm
 import comfy.utils
@@ -34,10 +36,13 @@ if (ROOT/"ckpts").is_dir():
 def _progress():
     bar = comfy.utils.ProgressBar(100)
     chunks = 0
-    def update(message):
+    def update(message, overall_fraction=None):
         nonlocal chunks
         mm.throw_exception_if_processing_interrupted()
         logging.info("[FlashVSR+] %s", message)
+        if overall_fraction is not None:
+            bar.update_absolute(round(95 * min(1.0, max(0.0, overall_fraction))), 100)
+            return
         match = re.match(r"DiT chunk (\d+)/(\d+)", message)
         if match:
             bar.update_absolute(min(95, round(90*int(match[1])/int(match[2]))), 100)
@@ -47,6 +52,55 @@ def _progress():
         elif "complete" in message.lower() or "saved" in message.lower():
             bar.update_absolute(98, 100)
     return bar, update
+
+
+@contextmanager
+def _tile_progress(index, count, tile, progress, expected_chunks=None):
+    label = f"Tile {index + 1}/{count} {tile.width}x{tile.height} at x={tile.x},y={tile.y}"
+    # Keep completed tiles visible as their own console rows.
+    bar = tqdm(total=100, desc=label, unit="%", position=index, leave=True,
+               dynamic_ncols=True, mininterval=0.2)
+    current = 0
+    chunks = 0
+
+    def update(message):
+        nonlocal current, chunks
+        match = re.match(r"DiT chunk (\d+)/(\d+|\?)", message)
+        total_chunks = (int(match[2]) if match and match[2].isdigit()
+                        else expected_chunks)
+        if match and total_chunks and total_chunks > 0:
+            value = min(95, round(95 * int(match[1]) / total_chunks))
+        elif message.startswith("DiT chunk"):
+            chunks += 1
+            value = min(90, max(current, chunks))
+        elif "complete" in message.lower() or "saved" in message.lower():
+            value = 95
+        else:
+            if progress is not None:
+                progress(f"Spatial {label}: {message}")
+            return
+        value = max(current, value)
+        if value > current:
+            bar.update(value - current)
+            current = value
+        if progress is not None:
+            progress(f"Spatial {label}: {message}",
+                     overall_fraction=(index + current / 100) / count)
+
+    try:
+        if progress is not None:
+            progress(f"Spatial {label}")
+        yield update
+    except BaseException:
+        bar.set_description(f"{label} failed")
+        raise
+    else:
+        if current < 100:
+            bar.update(100 - current)
+        if progress is not None:
+            progress(f"Spatial {label} complete", overall_fraction=(index + 1) / count)
+    finally:
+        bar.close()
 
 
 class FlashVSRPlusModelLoader:
@@ -91,8 +145,8 @@ class FlashVSRPlusOptions:
     def INPUT_TYPES(cls):
         return {"required": {
             "spatial_tiling": ("BOOLEAN", {"default": False, "tooltip": "Run Frames or Tiny-decoder VIDEO inference on overlapping spatial tiles. VIDEO stores temporary float32 segments on disk."}),
-            "spatial_tile_size": ("INT", {"default": 512, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile size in output canvas pixels."}),
-            "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 128, "tooltip": "Overlap in output canvas pixels; must be less than half the tile size."}),
+            "spatial_tile_height": ("INT", {"default": 512, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile height in output canvas pixels."}),
+            "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 128, "tooltip": "Overlap in output canvas pixels; must be less than half of both tile dimensions."}),
             "spatial_blend": (["cosine", "linear", "gaussian"],),
             "spatial_gaussian_sigma": ("FLOAT", {"default": .25, "min": .05, "max": 1., "step": .05}),
             "temporal_compression": ([4, 2, 1],),
@@ -112,6 +166,7 @@ class FlashVSRPlusOptions:
             "vae_tile_width": ("INT", {"default": 52, "min": 4, "max": 256}),
             "vae_overlap": ("INT", {"default": 15, "min": 0, "max": 128}),
             "video_preset": (["veryfast", "ultrafast", "superfast", "faster", "fast", "medium", "slow"],),
+            "spatial_tile_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 128, "tooltip": "Tile width in output canvas pixels. 0 uses the tile height; set a value to control width independently."}),
         }}
     RETURN_TYPES = (OPTIONS_TYPE,)
     RETURN_NAMES = ("options",)
@@ -141,7 +196,9 @@ class FlashVSRPlusUpscaleFrames:
         bar, progress = _progress()
         output, result = upscale_images(model, images, scale=scale, width=width, height=height,
             seed=seed, options=options, progress=progress,
-            interrupt=mm.throw_exception_if_processing_interrupted)
+            interrupt=mm.throw_exception_if_processing_interrupted,
+            tile_progress_factory=lambda i, n, tile, chunks: _tile_progress(
+                i, n, tile, progress, expected_chunks=chunks))
         bar.update_absolute(100, 100)
         return output, json.dumps(result.metadata, ensure_ascii=False, indent=2)
 
@@ -192,7 +249,9 @@ class FlashVSRPlusUpscaleVideo:
                     raise ValueError("Spatial VIDEO tiling currently requires the Tiny decoder")
                 if options.decode_every == 0:
                     raise ValueError("Spatial VIDEO tiling requires a numeric Tiny decode_every interval")
-                tiles = plan_tiles(ch, cw, options.spatial_tile_size, options.spatial_overlap)
+                tile_width = options.effective_spatial_tile_width
+                tiles = plan_tiles(ch, cw, options.spatial_tile_height, options.spatial_overlap,
+                                   tile_width=tile_width)
                 if len(tiles) == 1:
                     result = model.infer(InferenceRequest(input_path=source, output_path=restored,
                         height=ch, width=cw, content_height=height, content_width=width,
@@ -202,19 +261,25 @@ class FlashVSRPlusUpscaleVideo:
                     spools, tile_results = [], []
                     was_keep_loaded = model.keep_loaded
                     model.keep_loaded = True
+                    frame_count = video.get_frame_count()
+                    if max_frames:
+                        frame_count = min(frame_count, max_frames)
+                    latent_frames = (max(0, frame_count - 1) // 4) + 1
+                    expected_chunks = max(1, (latent_frames + 3) // 4)
                     try:
                         for index, tile in enumerate(tiles):
                             mm.throw_exception_if_processing_interrupted()
-                            progress(f"Spatial video tile {index + 1}/{len(tiles)}")
                             spool = Float16SegmentSpool(Path(temporary)/f"tile_{index:04d}")
                             request = InferenceRequest(input_path=source, height=ch, width=cw,
                                 content_height=height, content_width=width,
                                 max_frames=max_frames or None, fps=fps,
                                 spatial_crop_y=tile.y, spatial_crop_x=tile.x,
                                 spatial_crop_height=tile.height, spatial_crop_width=tile.width)
-                            tile_result = model.infer(request, seed=seed, options=options,
-                                progress=progress, interrupt=mm.throw_exception_if_processing_interrupted,
-                                segment_writer=spool)
+                            with _tile_progress(index, len(tiles), tile, progress,
+                                                expected_chunks=expected_chunks) as tile_progress:
+                                tile_result = model.infer(request, seed=seed, options=options,
+                                    progress=tile_progress, interrupt=mm.throw_exception_if_processing_interrupted,
+                                    segment_writer=spool)
                             spools.append(spool.verify())
                             tile_results.append(tile_result)
                     finally:
@@ -252,7 +317,8 @@ class FlashVSRPlusUpscaleVideo:
                     result.output_path = str(restored)
                     result.frames = artifact["frames"]
                     result.metadata.update({"artifact": artifact, "spatial_tiling": True,
-                        "tile_count": len(tiles), "tile_size": options.spatial_tile_size,
+                        "tile_count": len(tiles), "tile_height": options.spatial_tile_height,
+                        "tile_width": tile_width,
                         "overlap": options.spatial_overlap, "blend": options.spatial_blend,
                         "gaussian_sigma": options.spatial_gaussian_sigma,
                         "temporary_spool_bytes": sum(spool["bytes"] for spool in spools),

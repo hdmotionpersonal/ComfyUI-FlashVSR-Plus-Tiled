@@ -40,13 +40,14 @@ Choose one of three overlap blend methods:
 - `linear` — linear feathering across shared edges.
 - `gaussian` — center-weighted feathering with adjustable `spatial_gaussian_sigma`.
 
-Weights from overlapping tiles are normalized by their sum. Canvas edges retain full weight where there is no neighboring tile.
+Weights from overlapping tiles are normalized by their sum. Canvas edges retain full weight where there is no neighboring tile. The ComfyUI console shows a separate `tqdm` progress bar for each tile, labeled with its size and canvas position.
 
 | Option | Default | Notes |
 | --- | ---: | --- |
 | `spatial_tiling` | `false` | Enable spatial tile inference. |
-| `spatial_tile_size` | `512` | Output pixels per tile; must be a multiple of 128. |
-| `spatial_overlap` | `128` | Shared output pixels; must be a multiple of 128 and less than half the tile size. |
+| `spatial_tile_height` | `512` | Tile height in output pixels; must be a multiple of 128. |
+| `spatial_tile_width` | `0` | Tile width in output pixels; `0` follows the height, otherwise set a multiple of 128. |
+| `spatial_overlap` | `128` | Shared output pixels on both axes; must be a multiple of 128 and less than half of both tile dimensions. |
 | `spatial_blend` | `cosine` | `cosine`, `linear`, or `gaussian`. |
 | `spatial_gaussian_sigma` | `0.25` | Controls the Gaussian blend profile. |
 

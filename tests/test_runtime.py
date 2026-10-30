@@ -211,7 +211,10 @@ class GeometryTests(unittest.TestCase):
 
     def test_options_and_vae_validation(self):
         Options().validate()
-        for option in (Options(decode_every=3), Options(temporal_compression=3), Options(vae_overlap=30)):
+        Options(spatial_tile_height=384, spatial_tile_width=512, spatial_overlap=128).validate()
+        for option in (Options(decode_every=3), Options(temporal_compression=3),
+                       Options(vae_overlap=30), Options(spatial_tile_width=500),
+                       Options(spatial_tile_height=384, spatial_tile_width=512, spatial_overlap=192)):
             with self.assertRaises(ValueError):
                 option.validate()
 
@@ -246,6 +249,19 @@ class SpatialTilingTests(unittest.TestCase):
         self.assertTrue(torch.all(coverage > 0))
         self.assertEqual(tiles[0].x + tiles[0].width - tiles[1].x, 128)
 
+    def test_plan_accepts_independent_tile_height_and_width(self):
+        tiles = plan_tiles(640, 896, 384, 128, tile_width=512)
+        self.assertEqual(tiles, (
+            Tile(0, 0, 384, 512), Tile(0, 384, 384, 512),
+            Tile(256, 0, 384, 512), Tile(256, 384, 384, 512),
+        ))
+        self.assertEqual(tiles[0].y + tiles[0].height - tiles[2].y, 128)
+        self.assertEqual(tiles[0].x + tiles[0].width - tiles[1].x, 128)
+
+    def test_tile_width_zero_follows_height_for_old_square_workflows(self):
+        self.assertEqual(plan_tiles(384, 640, 512, 128, tile_width=0),
+                         plan_tiles(384, 640, 512, 128))
+
     def test_overlap_blenders_stitch_constant_tiles_without_seams_or_gaps(self):
         tiles = plan_tiles(384, 640, 512, 128)
         predictions = [torch.full((1, 2, tile.height, tile.width), float(i + 1))
@@ -266,6 +282,8 @@ class SpatialTilingTests(unittest.TestCase):
             plan_tiles(384, 639, 512, 128)
         with self.assertRaisesRegex(ValueError, "overlap must be divisible"):
             plan_tiles(384, 640, 512, 64)
+        with self.assertRaisesRegex(ValueError, "tile dimensions"):
+            plan_tiles(384, 640, 512, 128, tile_width=500)
 
 
 class AudioTests(unittest.TestCase):

@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 @dataclasses.dataclass(frozen=True)
 class Options:
     spatial_tiling: bool = False
-    spatial_tile_size: int = 512
+    spatial_tile_height: int = 512
     spatial_overlap: int = 128
     spatial_blend: str = "cosine"
     spatial_gaussian_sigma: float = 0.25
@@ -51,6 +51,7 @@ class Options:
     vae_tile_width: int = 52
     vae_overlap: int = 15
     video_preset: str = "veryfast"
+    spatial_tile_width: int = 0
 
     def validate(self):
         if self.temporal_compression not in (1, 2, 4):
@@ -72,15 +73,22 @@ class Options:
             raise ValueError("Invalid x264 encoding preset")
         if type(self.spatial_tiling) is not bool:
             raise TypeError("spatial_tiling must be a boolean")
-        if type(self.spatial_tile_size) is not int or self.spatial_tile_size < 256 or self.spatial_tile_size % 128:
-            raise ValueError("spatial_tile_size must be an integer >=256 and divisible by 128")
-        if type(self.spatial_overlap) is not int or self.spatial_overlap < 0 or self.spatial_overlap >= self.spatial_tile_size / 2 or self.spatial_overlap % 128:
-            raise ValueError("spatial_overlap must be nonnegative, divisible by 128, and smaller than half the tile")
+        if type(self.spatial_tile_height) is not int or self.spatial_tile_height < 256 or self.spatial_tile_height % 128:
+            raise ValueError("spatial_tile_height must be an integer >=256 and divisible by 128")
+        if type(self.spatial_tile_width) is not int or (self.spatial_tile_width != 0 and
+                (self.spatial_tile_width < 256 or self.spatial_tile_width % 128)):
+            raise ValueError("spatial_tile_width must be 0 (same as height) or an integer >=256 divisible by 128")
+        if type(self.spatial_overlap) is not int or self.spatial_overlap < 0 or self.spatial_overlap >= min(self.spatial_tile_height, self.spatial_tile_width or self.spatial_tile_height) / 2 or self.spatial_overlap % 128:
+            raise ValueError("spatial_overlap must be nonnegative, divisible by 128, and smaller than half of both tile dimensions")
         if self.spatial_blend not in ("cosine", "linear", "gaussian"):
             raise ValueError("spatial_blend must be cosine, linear or gaussian")
         if not math.isfinite(self.spatial_gaussian_sigma) or not 0.05 <= self.spatial_gaussian_sigma <= 1.0:
             raise ValueError("spatial_gaussian_sigma must be finite and between 0.05 and 1.0")
         return self
+
+    @property
+    def effective_spatial_tile_width(self):
+        return self.spatial_tile_width or self.spatial_tile_height
 
 
 def geometry(source_width, source_height, scale, width=0, height=0):
@@ -258,16 +266,19 @@ class ModelHandle:
 
 
 def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
-                   seed=1, fps=24.0, options=None, progress=None, interrupt=None):
+                   seed=1, fps=24.0, options=None, progress=None, interrupt=None,
+                   tile_progress_factory=None):
     if not isinstance(images, torch.Tensor) or images.ndim != 4:
         raise ValueError("Expected a ComfyUI IMAGE batch")
     width, height, cw, ch = geometry(images.shape[2], images.shape[1], scale, width, height)
     options = (options or Options()).validate()
     backend = resolve_backend(model.attention, model.device)
     if options.spatial_tiling:
-        tiles = plan_tiles(ch, cw, options.spatial_tile_size, options.spatial_overlap)
-        validate_attention_size(min(ch, options.spatial_tile_size),
-                                min(cw, options.spatial_tile_size), backend)
+        tile_width = options.effective_spatial_tile_width
+        tiles = plan_tiles(ch, cw, options.spatial_tile_height, options.spatial_overlap,
+                           tile_width=tile_width)
+        validate_attention_size(min(ch, options.spatial_tile_height),
+                                min(cw, tile_width), backend)
     else:
         tiles = ()
         validate_attention_size(ch, cw, backend)
@@ -286,16 +297,21 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
             for index, tile in enumerate(tiles):
                 if interrupt is not None:
                     interrupt()
-                if progress is not None:
-                    progress(f"Spatial tile {index + 1}/{len(tiles)}")
                 tile_video = video[..., tile.y:tile.y + tile.height, tile.x:tile.x + tile.width]
-                tile_result = model.infer(
-                    InferenceRequest(lq_video=tile_video, fps=float(fps),
-                                     noise_origin_y=tile.y, noise_origin_x=tile.x,
-                                     noise_canvas_height=ch, noise_canvas_width=cw), seed=seed,
-                    options=dataclasses.replace(options, color_correction=False),
-                    progress=progress, interrupt=interrupt,
-                )
+                expected_latents = (max(0, video.shape[2] - 1) // 4) + 1
+                expected_chunks = max(1, (expected_latents + 3) // 4)
+                tile_context = (tile_progress_factory(index, len(tiles), tile, expected_chunks)
+                                if tile_progress_factory is not None else contextlib.nullcontext(progress))
+                with tile_context as tile_callback:
+                    if tile_progress_factory is None and progress is not None:
+                        progress(f"Spatial tile {index + 1}/{len(tiles)}")
+                    tile_result = model.infer(
+                        InferenceRequest(lq_video=tile_video, fps=float(fps),
+                                         noise_origin_y=tile.y, noise_origin_x=tile.x,
+                                         noise_canvas_height=ch, noise_canvas_width=cw), seed=seed,
+                        options=dataclasses.replace(options, color_correction=False),
+                        progress=tile_callback, interrupt=interrupt,
+                    )
                 prediction = tile_result.video[0].float()
                 weight = blend_weights(tile, ch, cw, tiles, options.spatial_blend,
                                        options.spatial_gaussian_sigma)
@@ -317,7 +333,8 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
             )
             stitched = corrector(stitched.unsqueeze(0), video[:, :, :stitched.shape[1]])[0]
         result.metadata.update({"spatial_tiling": True, "tile_count": len(tiles),
-                                "tile_size": options.spatial_tile_size,
+                                "tile_height": options.spatial_tile_height,
+                                "tile_width": tile_width,
                                 "overlap": options.spatial_overlap,
                                 "blend": options.spatial_blend,
                                 "gaussian_sigma": options.spatial_gaussian_sigma,
