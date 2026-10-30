@@ -36,7 +36,7 @@
     },
     {
       "id": 2,
-      "type": "FlashVSRPlusModelLoader",
+      "type": "FlashVSRPlusTiledModelLoader",
       "pos": [
         30,
         260
@@ -66,7 +66,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "FlashVSRPlusModelLoader",
+        "Node name for S&R": "FlashVSRPlusTiledModelLoader",
         "cnr_id": "flashvsr-plus-t8",
         "ver": "0.2.0"
       },
@@ -82,7 +82,7 @@
     },
     {
       "id": 3,
-      "type": "FlashVSRPlusUpscaleVideo",
+      "type": "FlashVSRPlusTiledUpscaleVideo",
       "pos": [
         450,
         100
@@ -128,7 +128,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "FlashVSRPlusUpscaleVideo",
+        "Node name for S&R": "FlashVSRPlusTiledUpscaleVideo",
         "cnr_id": "flashvsr-plus-t8",
         "ver": "0.2.0"
       },
@@ -220,3 +220,4 @@
   },
   "version": 0.4
 }
+
