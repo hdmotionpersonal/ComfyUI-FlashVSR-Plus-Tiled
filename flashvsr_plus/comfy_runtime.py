@@ -266,7 +266,8 @@ def upscale_images(model: ModelHandle, images, *, scale=4.0, width=0, height=0,
     backend = resolve_backend(model.attention, model.device)
     if options.spatial_tiling:
         tiles = plan_tiles(ch, cw, options.spatial_tile_size, options.spatial_overlap)
-        validate_attention_size(options.spatial_tile_size, options.spatial_tile_size, backend)
+        validate_attention_size(min(ch, options.spatial_tile_size),
+                                min(cw, options.spatial_tile_size), backend)
     else:
         tiles = ()
         validate_attention_size(ch, cw, backend)
