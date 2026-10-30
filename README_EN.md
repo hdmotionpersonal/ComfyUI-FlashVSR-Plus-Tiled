@@ -27,10 +27,10 @@ The dependency list contains neither PyTorch nor transformers and does not repla
 
 | Node | Purpose |
 | --- | --- |
-| Model Loader | Turbo / Base / V1.1; BF16 / FP16 / INT8 ConvRot; Tiny / Wan VAE |
-| Upscale Video | Native VIDEO input/output with incremental reading and encoding |
-| Upscale Frames | One RGB image or consecutive video frames, with runtime information |
-| Options | Temporal compression, cache offloading, decoding, and color correction |
+| FlashVSR+ Tiled Model Loader | Turbo / Base / V1.1; BF16 / FP16 / INT8 ConvRot; Tiny / Wan VAE |
+| FlashVSR+ Tiled Upscale Video | Native VIDEO input/output with incremental reading and encoding |
+| FlashVSR+ Tiled Upscale Frames | One RGB image or consecutive video frames, with runtime information |
+| FlashVSR+ Tiled Options | Temporal compression, spatial tile / overlap / blend, cache offloading, decoding, and color correction |
 
 ## Single-image upscaling
 

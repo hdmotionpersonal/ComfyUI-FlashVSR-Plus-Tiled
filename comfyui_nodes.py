@@ -21,7 +21,7 @@ from .flashvsr_plus.inference.output import Float16SegmentSpool, IncrementalVide
 from .flashvsr_plus.inference.tiling import plan_tiles, stitch_tiles
 from .flashvsr_plus.weights import ROOT, FILES
 
-CATEGORY = "FlashVSR+"
+CATEGORY = "FlashVSR+ Tiled"
 MODEL_TYPE = "FLASHVSR_PLUS_MODEL"
 _OUTPUT_COMMIT_LOCK = threading.Lock()
 OPTIONS_TYPE = "FLASHVSR_PLUS_OPTIONS"
@@ -169,7 +169,7 @@ class FlashVSRPlusUpscaleVideo:
         from comfy_api.latest import Types
         options = options or Options(decode_every=(0 if model.decoder == "vae" else 28))
         if model.decoder == "vae" and options.decode_every:
-            raise ValueError("VAE uses full-clip decoding: set decode_every=0 in FlashVSR+ Options. Tiny supports incremental long videos.")
+            raise ValueError("VAE uses full-clip decoding: set decode_every=0 in FlashVSR+ Tiled Options. Tiny supports incremental long videos.")
         sw, sh = video.get_dimensions()
         width, height, cw, ch = geometry(sw, sh, scale, width, height)
         folder, name, counter, _, _ = folder_paths.get_save_image_path(
@@ -284,8 +284,8 @@ NODE_CLASS_MAPPINGS = {
     "FlashVSRPlusUpscaleVideo": FlashVSRPlusUpscaleVideo,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FlashVSRPlusModelLoader": "FlashVSR+ Model Loader",
-    "FlashVSRPlusOptions": "FlashVSR+ Options",
-    "FlashVSRPlusUpscaleFrames": "FlashVSR+ Upscale Frames",
-    "FlashVSRPlusUpscaleVideo": "FlashVSR+ Upscale Video",
+    "FlashVSRPlusModelLoader": "FlashVSR+ Tiled Model Loader",
+    "FlashVSRPlusOptions": "FlashVSR+ Tiled Options",
+    "FlashVSRPlusUpscaleFrames": "FlashVSR+ Tiled Upscale Frames",
+    "FlashVSRPlusUpscaleVideo": "FlashVSR+ Tiled Upscale Video",
 }

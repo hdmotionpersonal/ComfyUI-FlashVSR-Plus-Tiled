@@ -31,7 +31,7 @@ Models = "https://huggingface.co/t8star/Flashvsr-Plus-Comfy"
 
 [tool.comfy]
 PublisherId = "t8star"
-DisplayName = "FlashVSR+ T8"
+DisplayName = "FlashVSR+ Tiled (T8 fork)"
 requires-comfyui = ">=0.36.0"
 
 [tool.setuptools.packages.find]

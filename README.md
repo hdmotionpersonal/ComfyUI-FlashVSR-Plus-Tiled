@@ -27,10 +27,10 @@ python -m pip install -r custom_nodes/ComfyUI-FlashVSR-Plus-Tiled/requirements.t
 
 | 节点 | 功能 |
 | --- | --- |
-| Model Loader | Turbo / Base / V1.1，BF16 / FP16 / INT8 ConvRot，Tiny / Wan VAE |
-| Upscale Video | 原生 VIDEO 输入输出，增量读取和编码 |
-| Upscale Frames | 单张 RGB 图片或连续视频帧超分辨率，输出图像与运行信息 |
-| Options | 时间压缩、缓存卸载、解码与颜色修正 |
+| FlashVSR+ Tiled Model Loader | Turbo / Base / V1.1，BF16 / FP16 / INT8 ConvRot，Tiny / Wan VAE |
+| FlashVSR+ Tiled Upscale Video | 原生 VIDEO 输入输出，增量读取和编码 |
+| FlashVSR+ Tiled Upscale Frames | 单张 RGB 图片或连续视频帧超分辨率，输出图像与运行信息 |
+| FlashVSR+ Tiled Options | 时间压缩、空间 tile / overlap / blend、缓存卸载、解码与颜色修正 |
 
 ## 单图放大
 
