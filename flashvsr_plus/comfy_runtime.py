@@ -37,7 +37,9 @@ class Options:
     temporal_compression: int = 4
     temporal_merge: str = "gaussian"
     temporal_gaussian_sigma: float = 1.0
-    decode_every: int = 28
+    # Public ComfyUI-facing value: output video frames. Converted to latent
+    # frames at the inference boundary below.
+    decode_every: int = 112
     cache_offload_mode: str = "auto"
     offload_original_cache: bool = False
     tiny_decoder_mode: str = "auto"
@@ -56,8 +58,9 @@ class Options:
     def validate(self):
         if self.temporal_compression not in (1, 2, 4):
             raise ValueError("temporal_compression must be 1, 2 or 4")
-        if self.decode_every < 0 or self.decode_every % 4:
-            raise ValueError("decode_every must be 0 (auto) or a positive multiple of 4")
+        frame_step = 4 * self.temporal_compression
+        if self.decode_every < 0 or (self.decode_every and self.decode_every % frame_step):
+            raise ValueError(f"decode_every must be 0 (auto) or a positive multiple of {frame_step} video frames")
         if self.temporal_merge not in ("gaussian", "first") or not math.isfinite(self.temporal_gaussian_sigma) or self.temporal_gaussian_sigma <= 0:
             raise ValueError("Invalid temporal merge configuration")
         if self.cache_offload_mode not in ("auto", "never", "always"):
@@ -197,7 +200,7 @@ class ModelHandle:
     def infer(self, request: InferenceRequest, *, seed=1, options: Options | None = None,
               progress: Callable[[str], None] | None = None, interrupt: Callable[[], None] | None = None,
               segment_writer=None):
-        options = (options or Options(decode_every=(0 if self.decoder == "vae" else 28))).validate()
+        options = (options or Options(decode_every=(0 if self.decoder == "vae" else 112))).validate()
         progress = progress or (lambda message: log.info("FlashVSR+: %s", message))
         interrupt = interrupt or (lambda: None)
         with self._lock:
@@ -211,7 +214,8 @@ class ModelHandle:
             validate_attention_size(h, w, backend)
             if self.decoder == "vae" and request.input_path is not None and options.decode_every:
                 raise ValueError("Official VAE decoding requires decode_every=0 (auto); use Tiny for bounded long-video decoding")
-            decode_every = options.decode_every if self.decoder == "tiny" and options.decode_every else "auto"
+            decode_every = (options.decode_every // options.temporal_compression
+                            if self.decoder == "tiny" and options.decode_every else "auto")
             config = stream_config_for_mode(self.mode, device=self.device, seed=int(seed),
                 decode_every=decode_every, tiny_decoder_mode=options.tiny_decoder_mode,
                 tiny_decoder_channels_last=options.tiny_decoder_channels_last,

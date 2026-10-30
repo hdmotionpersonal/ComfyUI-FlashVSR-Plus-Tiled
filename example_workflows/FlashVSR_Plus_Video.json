@@ -125,6 +125,18 @@
           "type": "STRING",
           "links": [],
           "slot_index": 1
+        },
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 2
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [],
+          "slot_index": 3
         }
       ],
       "properties": {

@@ -37,11 +37,15 @@ if (ROOT/"ckpts").is_dir():
 def _progress():
     bar = comfy.utils.ProgressBar(100)
     chunks = 0
-    def update(message, overall_fraction=None, *, quiet=False):
+    def update(message, overall_fraction=None, *, quiet=False, log_writer=None):
         nonlocal chunks
         mm.throw_exception_if_processing_interrupted()
         if not quiet:
-            logging.info("[FlashVSR+] %s", message)
+            formatted = f"[INFO] [FlashVSR+] {message}"
+            if log_writer is None:
+                logging.info("[FlashVSR+] %s", message)
+            else:
+                log_writer(formatted)
         if overall_fraction is not None:
             bar.update_absolute(round(95 * min(1.0, max(0.0, overall_fraction))), 100)
             return
@@ -57,29 +61,48 @@ def _progress():
 
 
 @contextmanager
-def _tile_progress(index, count, tile, progress, expected_chunks=None):
-    label = f"Tile {index + 1}/{count} {tile.width}x{tile.height} at x={tile.x},y={tile.y}"
-    # Keep completed tiles visible as their own console rows.
-    bar = tqdm(total=100, desc=label, unit="%", position=index, leave=True,
-               dynamic_ncols=True, mininterval=0.2)
+def _tile_progress(index, count, tile, progress, expected_chunks=None,
+                   expected_decode_segments=None):
+    label = f"Tile {index + 1}/{count} x={tile.x},y={tile.y}"
+    # Tiles run sequentially, so one in-place console row per tile is enough.
+    # A fixed compact format avoids terminal wrapping and cursor-up ANSI codes.
+    bar = tqdm(total=100, desc=label, position=0, leave=True, dynamic_ncols=True,
+               bar_format="{desc}: {percentage:3.0f}%|{bar:32}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+               mininterval=0.2)
+
+    def write_log(message):
+        tqdm.write(message, file=bar.fp)
     current = 0
     chunks = 0
+    decode_segments = 0
+
+    def combined_progress():
+        chunk_fraction = min(1.0, chunks / expected_chunks) if expected_chunks else 0.0
+        decode_fraction = (min(1.0, decode_segments / expected_decode_segments)
+                           if expected_decode_segments else 0.0)
+        return round(80 * chunk_fraction + 20 * decode_fraction)
 
     def update(message):
-        nonlocal current, chunks
+        nonlocal current, chunks, decode_segments
         match = re.match(r"DiT chunk (\d+)/(\d+|\?)", message)
-        total_chunks = (int(match[2]) if match and match[2].isdigit()
-                        else expected_chunks)
-        if match and total_chunks and total_chunks > 0:
-            value = min(95, round(95 * int(match[1]) / total_chunks))
+        decode_match = re.match(r"Decode segment (\d+)(?:/(\d+))?", message)
+        if match:
+            chunks = max(chunks, int(match[1]))
+            total_chunks = int(match[2]) if match[2].isdigit() else expected_chunks
+            value = combined_progress() if total_chunks else min(80, chunks)
+        elif decode_match:
+            decode_segments = max(decode_segments, int(decode_match[1]))
+            total_segments = (int(decode_match[2]) if decode_match[2]
+                              else expected_decode_segments)
+            value = combined_progress() if total_segments else min(98, current + 1)
         elif message.startswith("DiT chunk"):
             chunks += 1
-            value = min(90, max(current, chunks))
+            value = combined_progress() if expected_chunks else min(80, chunks)
         elif "complete" in message.lower() or "saved" in message.lower():
-            value = 95
+            value = 99
         else:
             if progress is not None:
-                progress(f"Spatial {label}: {message}")
+                progress(f"Spatial {label}: {message}", log_writer=write_log)
             return
         value = max(current, value)
         if value > current:
@@ -88,11 +111,12 @@ def _tile_progress(index, count, tile, progress, expected_chunks=None):
         if progress is not None:
             progress(f"Spatial {label}: {message}",
                      overall_fraction=(index + current / 100) / count,
-                     quiet=message.startswith("DiT chunk"))
+                     quiet=message.startswith("DiT chunk"),
+                     log_writer=write_log)
 
     try:
         if progress is not None:
-            progress(f"Spatial {label}")
+            progress(f"Spatial {label}", log_writer=write_log)
         yield update
     except BaseException:
         bar.set_description(f"{label} failed")
@@ -101,9 +125,43 @@ def _tile_progress(index, count, tile, progress, expected_chunks=None):
         if current < 100:
             bar.update(100 - current)
         if progress is not None:
-            progress(f"Spatial {label} complete", overall_fraction=(index + 1) / count)
+            progress(f"Spatial {label} complete", overall_fraction=(index + 1) / count,
+                     log_writer=write_log)
     finally:
         bar.close()
+
+
+def _output_is_connected(prompt, node_id, output_index):
+    if not isinstance(prompt, dict) or node_id is None:
+        return True
+    node_id = str(node_id)
+    for node in prompt.values():
+        if not isinstance(node, dict):
+            continue
+        for link in (node.get("inputs") or {}).values():
+            if (isinstance(link, (list, tuple)) and len(link) == 2
+                    and str(link[0]) == node_id and link[1] == output_index):
+                return True
+    return False
+
+
+def _extract_audio_track(path):
+    import av
+
+    with av.open(str(path), mode="r") as container:
+        stream = next((item for item in container.streams if item.type == "audio"), None)
+        if stream is None:
+            return None
+        resampler = av.AudioResampler(format="fltp")
+        chunks = []
+        for packet in container.demux(stream):
+            for decoded in packet.decode():
+                chunks.extend(frame.to_ndarray() for frame in resampler.resample(decoded))
+        chunks.extend(frame.to_ndarray() for frame in resampler.resample(None))
+        if not chunks:
+            return None
+        waveform = torch.from_numpy(np.concatenate(chunks, axis=1)).unsqueeze(0)
+        return {"waveform": waveform, "sample_rate": int(stream.sample_rate or 1)}
 
 
 class FlashVSRPlusModelLoader:
@@ -148,14 +206,15 @@ class FlashVSRPlusOptions:
     def INPUT_TYPES(cls):
         return {"required": {
             "spatial_tiling": ("BOOLEAN", {"default": False, "tooltip": "Run Frames or Tiny-decoder VIDEO inference on overlapping spatial tiles. VIDEO stores temporary float32 segments on disk."}),
-            "spatial_tile_height": ("INT", {"default": 512, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile height in output canvas pixels."}),
+            "spatial_tile_height": ("INT", {"default": 512, "min": 256, "max": 8192, "step": 128, "tooltip": "Tile height in output pixels."}),
+            "spatial_tile_width": ("INT", {"default": 512, "min": 0, "max": 8192, "step": 128, "tooltip": "Tile width in output pixels. Set independently from height; 0 follows tile height for older workflows."}),
             "spatial_overlap": ("INT", {"default": 128, "min": 0, "max": 4096, "step": 8, "tooltip": "Overlap in output pixels; step 8, less than half of both tile dimensions. Tile dimensions stay multiples of 128."}),
             "spatial_blend": (["cosine", "linear", "gaussian"],),
             "spatial_gaussian_sigma": ("FLOAT", {"default": .25, "min": .05, "max": 1., "step": .05}),
             "temporal_compression": ([4, 2, 1],),
             "temporal_merge": (["gaussian", "first"],),
             "temporal_gaussian_sigma": ("FLOAT", {"default": 1., "min": .01, "max": 10., "step": .05}),
-            "decode_every": ("INT", {"default": 28, "min": 0, "max": 1024, "step": 4, "tooltip": "Latent-frame interval: 28 is about 112 pixel frames at compression 4. 0=auto/full clip. Use positive multiples of 4 for Tiny."}),
+            "decode_every_frames": ("INT", {"default": 112, "min": 0, "max": 16384, "step": 4, "tooltip": "Output video-frame interval for Tiny incremental decoding. Must be divisible by 4 × temporal_compression. 0=auto/full clip; spatial VIDEO tiling requires a positive interval."}),
             "cache_offload_mode": (["auto", "never", "always"],),
             "offload_original_cache": ("BOOLEAN", {"default": False}),
             "tiny_decoder_mode": (["auto", "serial", "parallel"],),
@@ -165,11 +224,10 @@ class FlashVSRPlusOptions:
             "color_correction_chunk_size": ("INT", {"default": 16, "min": 1, "max": 128}),
             "ffn_chunk_tokens": ("INT", {"default": 8192, "min": 0, "max": 262144, "step": 1024}),
             "vae_tiled": ("BOOLEAN", {"default": True}),
-            "vae_tile_height": ("INT", {"default": 30, "min": 4, "max": 256}),
-            "vae_tile_width": ("INT", {"default": 52, "min": 4, "max": 256}),
-            "vae_overlap": ("INT", {"default": 15, "min": 0, "max": 128}),
+            "vae_tile_height": ("INT", {"default": 240, "min": 32, "max": 2048, "step": 8, "tooltip": "VAE decoder tile height in output pixels (Wan VAE uses 8 latent cells per pixel block)."}),
+            "vae_tile_width": ("INT", {"default": 416, "min": 32, "max": 2048, "step": 8, "tooltip": "VAE decoder tile width in output pixels (Wan VAE uses 8 latent cells per pixel block)."}),
+            "vae_overlap": ("INT", {"default": 120, "min": 0, "max": 1024, "step": 8, "tooltip": "Overlap between VAE decoder tiles in output pixels."}),
             "video_preset": (["veryfast", "ultrafast", "superfast", "faster", "fast", "medium", "slow"],),
-            "spatial_tile_width": ("INT", {"default": 512, "min": 0, "max": 8192, "step": 128, "tooltip": "Tile width in output canvas pixels. Set independently from height. 0 follows tile height for older workflows."}),
         }}
     RETURN_TYPES = (OPTIONS_TYPE,)
     RETURN_NAMES = ("options",)
@@ -177,6 +235,23 @@ class FlashVSRPlusOptions:
     CATEGORY = CATEGORY
 
     def configure(self, **kwargs):
+        # New UI values are in output pixels/frames. Keep saved workflows made
+        # with the previous latent-frame controls working when their old values
+        # do not align to the new pixel/frame increments.
+        temporal_compression = kwargs["temporal_compression"]
+        decode_every = kwargs.pop("decode_every_frames", kwargs.pop("decode_every", 112))
+        frame_step = 4 * temporal_compression
+        if decode_every and decode_every % frame_step:
+            decode_every *= temporal_compression  # legacy latent-frame value
+        kwargs["decode_every"] = decode_every
+
+        vae_values = (kwargs["vae_tile_height"], kwargs["vae_tile_width"], kwargs["vae_overlap"])
+        if all(value % 8 == 0 for value in vae_values):
+            # Wan's VAE uses 8x spatial downsampling: convert displayed pixels
+            # to the latent-grid dimensions expected by the decoder.
+            kwargs["vae_tile_height"] //= 8
+            kwargs["vae_tile_width"] //= 8
+            kwargs["vae_overlap"] //= 8
         return (Options(**kwargs).validate(),)
 
 
@@ -217,17 +292,27 @@ class FlashVSRPlusUpscaleVideo:
             "seed": ("INT", {"default": 1, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
             "max_frames": ("INT", {"default": 0, "min": 0, "max": 10000000}),
             "filename_prefix": ("STRING", {"default": "FlashVSRPlus/FlashVSRPlus"}),
-        }, "optional": {"options": (OPTIONS_TYPE,)}}
-    RETURN_TYPES = ("VIDEO", "STRING")
-    RETURN_NAMES = ("video", "info")
+        }, "optional": {"options": (OPTIONS_TYPE,)},
+            "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"}}
+    # Preserve the original output indices for saved workflows; append the
+    # component outputs so existing video/info connections remain valid.
+    RETURN_TYPES = ("VIDEO", "STRING", "IMAGE", "AUDIO")
+    RETURN_NAMES = ("video", "info", "images", "audio")
+    OUTPUT_TOOLTIPS = (
+        "The upscaled video file.",
+        "JSON metadata for the upscaled video.",
+        "All upscaled frames as an IMAGE batch. Connecting this output loads the full batch into host RAM.",
+        "The audio waveform preserved from the input video, or None when no audio track exists.",
+    )
     FUNCTION = "upscale"
     CATEGORY = CATEGORY
 
     def upscale(self, model, video, scale=4., width=0, height=0, seed=1,
-                max_frames=0, filename_prefix="FlashVSRPlus/FlashVSRPlus", options=None):
+                max_frames=0, filename_prefix="FlashVSRPlus/FlashVSRPlus", options=None,
+                prompt=None, unique_id=None):
         from comfy_api.input_impl import VideoFromFile
         from comfy_api.latest import Types
-        options = options or Options(decode_every=(0 if model.decoder == "vae" else 28))
+        options = options or Options(decode_every=(0 if model.decoder == "vae" else 112))
         if model.decoder == "vae" and options.decode_every:
             raise ValueError("VAE uses full-clip decoding: set decode_every=0 in FlashVSR+ Tiled Options. Tiny supports incremental long videos.")
         sw, sh = video.get_dimensions()
@@ -271,8 +356,12 @@ class FlashVSRPlusUpscaleVideo:
                     frame_count = video.get_frame_count()
                     if max_frames:
                         frame_count = min(frame_count, max_frames)
-                    latent_frames = (max(0, frame_count - 1) // 4) + 1
+                    temporal_repeat = 4 // options.temporal_compression
+                    expanded_frames = 1 + max(0, frame_count - 1) * temporal_repeat
+                    latent_frames = (max(0, expanded_frames - 1) // 4) + 1
                     expected_chunks = max(1, (latent_frames + 3) // 4)
+                    decode_latents = options.decode_every // options.temporal_compression
+                    expected_decode_segments = max(1, (latent_frames + decode_latents - 1) // decode_latents)
                     try:
                         for index, tile in enumerate(tiles):
                             mm.throw_exception_if_processing_interrupted()
@@ -283,7 +372,8 @@ class FlashVSRPlusUpscaleVideo:
                                 spatial_crop_y=tile.y, spatial_crop_x=tile.x,
                                 spatial_crop_height=tile.height, spatial_crop_width=tile.width)
                             with _tile_progress(index, len(tiles), tile, progress,
-                                                expected_chunks=expected_chunks) as tile_progress:
+                                                expected_chunks=expected_chunks,
+                                                expected_decode_segments=expected_decode_segments) as tile_progress:
                                 tile_result = model.infer(request, seed=seed, options=options,
                                     progress=tile_progress, interrupt=mm.throw_exception_if_processing_interrupted,
                                     segment_writer=spool)
@@ -349,7 +439,27 @@ class FlashVSRPlusUpscaleVideo:
         result.metadata.update({"path": str(destination), "width": width, "height": height,
                                 "canvas_width": cw, "canvas_height": ch})
         bar.update_absolute(100, 100)
-        return VideoFromFile(str(destination)), json.dumps(result.metadata, ensure_ascii=False, indent=2)
+        output_video = VideoFromFile(str(destination))
+        want_images = _output_is_connected(prompt, unique_id, 2)
+        want_audio = _output_is_connected(prompt, unique_id, 3)
+        image_output = audio_output = None
+        if want_images:
+            frame_count = output_video.get_frame_count()
+            out_width, out_height = output_video.get_dimensions()
+            estimated_gib = frame_count * out_width * out_height * 3 * 4 / (1024 ** 3)
+            progress(f"Extracting {frame_count} output frames as IMAGE; estimated host RAM {estimated_gib:.2f} GiB")
+            components = output_video.get_components()
+            image_output = components.images
+            if want_audio:
+                audio_output = components.audio
+        elif want_audio:
+            progress("Extracting AUDIO waveform from completed video")
+            audio_output = _extract_audio_track(destination)
+        result.metadata.update({"image_output_connected": want_images,
+                                "audio_output_connected": want_audio,
+                                "audio_output_available": audio_output is not None})
+        return (output_video, json.dumps(result.metadata, ensure_ascii=False, indent=2),
+                image_output, audio_output)
 
 
 NODE_CLASS_MAPPINGS = {

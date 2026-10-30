@@ -1,12 +1,35 @@
-# FlashVSR+ T8 Spatial Tiling for ComfyUI
+# FlashVSR+ Tiled for ComfyUI
+
+**Spatially tiled video upscaling for NVIDIA GPUs with limited VRAM.** Processing overlapping spatial tiles reduces the working size of each inference pass, making larger output resolutions more practical. Memory use still depends on model, tile dimensions, temporal settings, and clip length.
 
 Native ComfyUI VIDEO and IMAGE super-resolution powered by [FlashVSR+](https://github.com/OpenImagingLab/FlashVSR_Plus). This fork adds spatial tiling with overlap blending for larger output frames, alongside audio preservation, incremental video processing, and INT8 ConvRot support. Requires an NVIDIA CUDA GPU.
 
 [Models](https://huggingface.co/t8star/Flashvsr-Plus-Comfy) · [Example workflows](example_workflows) · [Validation](docs/VALIDATION.md) · [Spatial tiling PRD](PRD_SPATIAL_TILING_RU.md)
 
+## What this fork adds
+
+- Independent spatial tile width and height in output pixels, with configurable overlap.
+- Three overlap blends: cosine, linear, and Gaussian.
+- Streaming VIDEO processing with temporary float16 tile segments, audio preservation, and final stitching.
+- Console output showing output dimensions and the tile grid, with one progress bar per tile. The bar includes DiT work and completed Tiny decode segments; percentages are an estimate, not a timing guarantee.
+- Pixel-based VAE tile controls and a Tiny decode interval expressed in output video frames.
+- Dependent spatial controls are disabled when `spatial_tiling` is off; VAE tile height, width, and overlap are disabled when `vae_tiled` is off.
+- Separate IMAGE and AUDIO outputs on **Tiled Upscale Video**, in addition to VIDEO and JSON information.
+- Example workflows using the tiled node classes, including the workflow embedded in the portrait PNG.
+
+## Video outputs
+
+The output order is `video`, `info`, `images`, `audio`. The original video and info port indices are preserved for existing connections.
+
+`images` contains the full upscaled frame batch, decoded from the saved output video. It is materialized only when that port is connected in the submitted graph. A float32 RGB batch needs approximately 12 bytes per pixel per frame: 192 frames at 3840×2160 alone need about 17.8 GiB of host RAM, with additional decoding overhead. Keep this port disconnected when you only need a video file.
+
+`audio` contains the soundtrack from the completed output video, or `None` when there is no audio track. An audio-only connection extracts the waveform without materializing the image batch.
+
+After updating Python code, restart ComfyUI and refresh its browser tab to load the new output ports. Save your current workflow before refreshing.
+
 ## Installation
 
-In **ComfyUI Manager**, search for **FlashVSR+ Tiled**, install the node pack, and restart ComfyUI. The node category and searchable node names include `Tiled` to distinguish this fork from the original nodes.
+All four nodes include **Tiled** in their searchable names and category. Use the tiled loader, options, and upscale nodes together; the original T8 loader returns an incompatible model handle for spatial VIDEO tiling.
 
 To install manually, run from the ComfyUI directory and use **ComfyUI's own Python** to install dependencies:
 
@@ -42,18 +65,21 @@ Choose one of three overlap blend methods:
 - `linear` — linear feathering across shared edges.
 - `gaussian` — center-weighted feathering with adjustable `spatial_gaussian_sigma`.
 
-Before tiled inference, the ComfyUI console reports the tile size, final output dimensions, and tile grid (columns × rows). Weights from overlapping tiles are normalized by their sum. Canvas edges retain full weight where there is no neighboring tile. The console shows a separate `tqdm` progress bar for each tile, labeled with its size and canvas position.
+Before tiled inference, the ComfyUI console reports the tile size, final output dimensions, and tile grid (columns × rows). Weights from overlapping tiles are normalized by their sum. Canvas edges retain full weight where there is no neighboring tile. The console shows a separate `tqdm` progress bar for each tile, labeled with its index and canvas position. Tile dimensions are printed in the spatial plan.
 
 | Option | Default | Notes |
 | --- | ---: | --- |
 | `spatial_tiling` | `false` | Enable spatial tile inference. |
-| `spatial_tile_height` | `512` | Tile height in output pixels; must be a multiple of 128. |
-| `spatial_tile_width` | `512` | Tile width in output pixels, independently adjustable from height; set a multiple of 128. `0` follows the height for older workflows. |
+| `spatial_tile_height` | `512` | Tile height in output pixels; step 128. |
+| `spatial_tile_width` | `512` | Tile width in output pixels, beside height and independently adjustable; step 128. `0` follows the height for older workflows. |
 | `spatial_overlap` | `128` | Shared output pixels on both axes; step 8, and less than half of both tile dimensions. |
 | `spatial_blend` | `cosine` | `cosine`, `linear`, or `gaussian`. |
 | `spatial_gaussian_sigma` | `0.25` | Controls the Gaussian blend profile. |
+| `decode_every_frames` | `112` | Tiny decoder interval in output video frames. Its valid step is `4 × temporal_compression`; `0` selects full-clip/auto decoding. |
+| `vae_tile_height` / `vae_tile_width` | `240` / `416` | VAE decoder tile dimensions in output pixels; step 8. |
+| `vae_overlap` | `120` | VAE decoder overlap in output pixels; step 8 and less than both VAE tile dimensions. |
 
-Spatial VIDEO tiling currently requires the **Tiny** decoder and a positive numeric `decode_every` value. It writes temporary float16 tile segments to disk; temporary storage grows with clip length and the total tile area. Spatial VIDEO tiling with Wan VAE is not supported yet. Each tile uses its crop from the global latent-noise coordinates. Tile boundaries can still differ because each tile has a smaller attention context. Color correction in spatial VIDEO mode is applied per tile; disable it if you see color shifts at seams.
+Spatial VIDEO tiling currently requires the **Tiny** decoder and a positive `decode_every_frames` value. The node adjusts the frame step when `temporal_compression` changes. VAE tile dimensions and overlap are shown in output pixels and converted internally to Wan VAE latent units. Spatial VIDEO tiling with Wan VAE is not supported yet. It writes temporary float16 tile segments to disk; temporary storage grows with clip length and the total tile area. Each tile uses its crop from the global latent-noise coordinates. Tile boundaries can still differ because each tile has a smaller attention context. Color correction in spatial VIDEO mode is applied per tile; disable it if you see color shifts at seams.
 
 A GPU smoke test on an RTX 4070 Ti SUPER used V1 INT8 ConvRot, Tiny, SDPA, 512-pixel tiles, and 128-pixel overlap. The 33-frame demo clip completed at its full duration with cosine blending. Cosine, linear, and Gaussian each completed an 8-frame GPU run. The full-resolution output was 600×336; the padded canvas produced two horizontal tiles with exactly 128 pixels of overlap.
 
@@ -69,13 +95,13 @@ Models are discovered in `ComfyUI/models/flashvsr_plus` and the node's `ckpts` d
 
 - **INT8 ConvRot:** each preconverted DiT is approximately **1.45 GB**. It runs with the matching LQ projection and decoder; the original DiT is not required. Transformer-block linear layers use Comfy Kitchen W8A8, while other components remain in floating point.
 - **Attention:** official BSA, Triton, and SDPA backends are supported. `auto` selects an available backend; Triton is recommended for high-resolution output. SDPA rejects oversized masks before allocation. Native BSA has not been verified on Windows.
-- **Segmented decoding:** Tiny accepts positive `decode_every` values divisible by four, such as `4`. Wan VAE uses full-clip decoding and requires `decode_every=0`.
+- **Segmented decoding:** Tiny accepts `decode_every_frames` values in output frames, in multiples of `4 × temporal_compression`. Wan VAE uses full-clip decoding and requires `decode_every_frames=0`.
 
 INT8 primarily reduces weight memory; speed and image quality depend on the content and hardware. IMAGE output requires RAM for the full batch. VIDEO uses a constant-frame-rate timeline; normalize variable-frame-rate sources to CFR first. Audio that cannot be copied into MP4, such as PCM, is encoded as AAC. Model weights return to CPU after each request; `keep_loaded` retains the CPU copy between requests.
 
 ## Validation
 
-**48 regression tests passed.** Spatial GPU checks covered all three blend methods, plus a full 33-frame cosine-blended video run on an RTX 4070 Ti SUPER. See [validation scope](docs/VALIDATION.md) and the [1080p validation clip](assets/validation_1080p_5s.mp4) for the existing full-resolution validation records.
+Earlier validation recorded **48 passing regression tests**. This is a historical baseline, not a test result for every subsequent change. The latest IMAGE/AUDIO outputs and decode-progress changes have passed syntax checks but have not yet received an end-to-end GPU validation. Spatial GPU checks covered all three blend methods, plus a full 33-frame cosine-blended video run on an RTX 4070 Ti SUPER. See [validation scope](docs/VALIDATION.md) and the [1080p validation clip](assets/validation_1080p_5s.mp4) for the existing full-resolution validation records.
 
 ## Community and resources
 
@@ -83,4 +109,4 @@ INT8 primarily reduces weight memory; speed and image quality depend on the cont
 
 ## Credits and license
 
-Based on [OpenImagingLab/FlashVSR_Plus](https://github.com/OpenImagingLab/FlashVSR_Plus) and [FlashVSR V1.1](https://huggingface.co/JunhaoZhuang/FlashVSR-v1.1). INT8 linear operations use [Comfy Kitchen](https://github.com/Comfy-Org/comfy-kitchen). This ComfyUI integration and its derived checkpoints are maintained by T8star. Code and model files are licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Based on [OpenImagingLab/FlashVSR_Plus](https://github.com/OpenImagingLab/FlashVSR_Plus) and [FlashVSR V1.1](https://huggingface.co/JunhaoZhuang/FlashVSR-v1.1). INT8 linear operations use [Comfy Kitchen](https://github.com/Comfy-Org/comfy-kitchen). The original ComfyUI integration and derived checkpoints are maintained by T8star. This spatial-tiling fork is maintained at [hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled](https://github.com/hdmotionpersonal/ComfyUI-FlashVSR-Plus-Tiled). Code and model files are licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
