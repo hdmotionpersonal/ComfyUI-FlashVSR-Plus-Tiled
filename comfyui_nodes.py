@@ -278,14 +278,14 @@ class FlashVSRPlusUpscaleVideo:
 
 
 NODE_CLASS_MAPPINGS = {
-    "FlashVSRPlusModelLoader": FlashVSRPlusModelLoader,
-    "FlashVSRPlusOptions": FlashVSRPlusOptions,
-    "FlashVSRPlusUpscaleFrames": FlashVSRPlusUpscaleFrames,
-    "FlashVSRPlusUpscaleVideo": FlashVSRPlusUpscaleVideo,
+    "FlashVSRPlusTiledModelLoader": FlashVSRPlusModelLoader,
+    "FlashVSRPlusTiledOptions": FlashVSRPlusOptions,
+    "FlashVSRPlusTiledUpscaleFrames": FlashVSRPlusUpscaleFrames,
+    "FlashVSRPlusTiledUpscaleVideo": FlashVSRPlusUpscaleVideo,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FlashVSRPlusModelLoader": "FlashVSR+ Tiled Model Loader",
-    "FlashVSRPlusOptions": "FlashVSR+ Tiled Options",
-    "FlashVSRPlusUpscaleFrames": "FlashVSR+ Tiled Upscale Frames",
-    "FlashVSRPlusUpscaleVideo": "FlashVSR+ Tiled Upscale Video",
+    "FlashVSRPlusTiledModelLoader": "FlashVSR+ Tiled Model Loader",
+    "FlashVSRPlusTiledOptions": "FlashVSR+ Tiled Options",
+    "FlashVSRPlusTiledUpscaleFrames": "FlashVSR+ Tiled Upscale Frames",
+    "FlashVSRPlusTiledUpscaleVideo": "FlashVSR+ Tiled Upscale Video",
 }

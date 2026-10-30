@@ -6,7 +6,7 @@
     }
   },
   "2": {
-    "class_type": "FlashVSRPlusModelLoader",
+    "class_type": "FlashVSRPlusTiledModelLoader",
     "inputs": {
       "mode": "turbo",
       "precision": "int8_convrot",
@@ -18,7 +18,7 @@
     }
   },
   "3": {
-    "class_type": "FlashVSRPlusUpscaleVideo",
+    "class_type": "FlashVSRPlusTiledUpscaleVideo",
     "inputs": {
       "model": [
         "2",
