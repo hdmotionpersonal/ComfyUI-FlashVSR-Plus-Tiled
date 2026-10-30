@@ -188,6 +188,8 @@ class FlashVSRPlusUpscaleVideo:
             if options.spatial_tiling:
                 if model.decoder != "tiny":
                     raise ValueError("Spatial VIDEO tiling currently requires the Tiny decoder")
+                if options.decode_every == 0:
+                    raise ValueError("Spatial VIDEO tiling requires a numeric Tiny decode_every interval")
                 tiles = plan_tiles(ch, cw, options.spatial_tile_size, options.spatial_overlap)
                 if len(tiles) == 1:
                     result = model.infer(InferenceRequest(input_path=source, output_path=restored,
@@ -251,6 +253,7 @@ class FlashVSRPlusUpscaleVideo:
                         "tile_count": len(tiles), "tile_size": options.spatial_tile_size,
                         "overlap": options.spatial_overlap, "blend": options.spatial_blend,
                         "gaussian_sigma": options.spatial_gaussian_sigma,
+                        "temporary_spool_bytes": sum(spool["bytes"] for spool in spools),
                         "noise_policy": "global latent coordinates"})
             else:
                 result = model.infer(InferenceRequest(input_path=source, output_path=restored,

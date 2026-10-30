@@ -145,7 +145,8 @@ class FloatSegmentSpool:
         path = self.directory / f"segment_{len(self.segments):06d}.npy"
         value = video[0].detach().to(device="cpu", dtype=torch.float32).contiguous().numpy()
         np.save(path, value, allow_pickle=False)
-        self.segments.append({"path": str(path), "frames": int(value.shape[1])})
+        self.segments.append({"path": str(path), "frames": int(value.shape[1]),
+                              "bytes": int(path.stat().st_size)})
 
     def close(self):
         self.closed = True
@@ -154,7 +155,8 @@ class FloatSegmentSpool:
         if not self.closed or not self.segments:
             raise RuntimeError("segment spool is empty or was not closed")
         return {"segments": list(self.segments),
-                "frames": sum(item["frames"] for item in self.segments)}
+                "frames": sum(item["frames"] for item in self.segments),
+                "bytes": sum(item["bytes"] for item in self.segments)}
 
 
 def save_tensor_video(
